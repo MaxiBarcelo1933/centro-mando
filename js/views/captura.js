@@ -1,7 +1,7 @@
 // Captura rápida: cargar una tarea (o un seguimiento) en menos de 5 segundos desde el "+".
 import { el } from '../dom.js';
 import * as store from '../store.js';
-import { todayISO, addDays } from '../dates.js';
+import { todayISO, addDays, relativeDayLabel } from '../dates.js';
 import { openSheet } from '../components/sheet.js';
 import { chipGroup } from '../components/chips.js';
 import { showToast, tryAction } from '../components/toast.js';
@@ -15,10 +15,14 @@ const PLACEHOLDERS = {
   followup: 'Ej: Cartel gomería · San José',
 };
 
-// Se llama directo desde el toque en "+" (así iOS abre el teclado al instante).
-export function openQuickCapture() {
+/**
+ * Se llama directo desde el toque en "+" (así iOS abre el teclado al instante).
+ * Desde el calendario llega con el día y la hora del hueco tocado: { date, time }.
+ */
+export function openQuickCapture({ date = null, time = null } = {}) {
+  const today = todayISO();
   const draft = {
-    when: 'hoy',
+    when: bucketForDate(date, today),
     area: store.getSetting('lastArea') || 'otros',
   };
 
@@ -37,12 +41,16 @@ export function openQuickCapture() {
   });
 
   // Campos de tarea
-  const timeInput = el('input', { type: 'time', class: 'field__input' });
+  const dateInput = el('input', { type: 'date', class: 'field__input', value: date ?? '' });
+  const timeInput = el('input', { type: 'time', class: 'field__input', value: time ?? '' });
   const notesInput = el('textarea', { class: 'field__input', rows: 3 });
-  const taskFields = el('details', { class: 'more' },
+  const taskFields = el('details', { class: 'more', open: Boolean(date || time) },
     el('summary', {}, 'Más detalles'),
     el('div', { class: 'more__body' },
-      field('Hora', timeInput),
+      el('div', { class: 'field-row' },
+        field('Fecha', dateInput),
+        field('Hora', timeInput),
+      ),
       field('Notas', notesInput),
     ),
   );
@@ -52,7 +60,7 @@ export function openQuickCapture() {
     type: 'text', class: 'field__input', autocomplete: 'off', enterkeyhint: 'done',
     placeholder: 'Ej: consultar si aprueban la versión iluminada',
   });
-  const dueDate = dueDatePicker({ value: addDays(todayISO(), 1) });
+  const dueDate = dueDatePicker({ value: date && date >= today ? date : addDays(today, 1) });
   const owner = ownerPicker();
   const followupFields = el('div', { class: 'form-group form-group--wide' },
     field('Próxima acción', nextActionInput),
@@ -70,12 +78,22 @@ export function openQuickCapture() {
     value: draft.when,
     onChange: (value) => {
       draft.when = value;
+      // Igual que al editar: "Hoy" pone la fecha de hoy; las otras borran una fecha de hoy o pasada.
+      if (value === 'hoy') dateInput.value = today;
+      else if (value !== FOLLOWUP && dateInput.value && dateInput.value <= today) dateInput.value = '';
       const isFollowup = value === FOLLOWUP;
       taskFields.hidden = isFollowup;
       followupFields.hidden = !isFollowup;
       titleInput.placeholder = isFollowup ? PLACEHOLDERS.followup : PLACEHOLDERS.task;
       sheet.element.querySelector('.sheet__title').textContent = isFollowup ? 'Nuevo seguimiento' : 'Nueva tarea';
     },
+  });
+
+  // Elegir una fecha acomoda "¿Cuándo?": hoy o pasada → Hoy; futura → Esta semana.
+  dateInput.addEventListener('change', () => {
+    if (!dateInput.value || draft.when === FOLLOWUP) return;
+    draft.when = dateInput.value <= today ? 'hoy' : (draft.when === 'hoy' ? 'semana' : draft.when);
+    whenChips.setValue(draft.when);
   });
 
   const form = el('form', { class: 'form', novalidate: true },
@@ -111,11 +129,14 @@ export function openQuickCapture() {
         title,
         area: draft.area,
         bucket: draft.when,
+        dueDate: dateInput.value || null,
         time: timeInput.value || null,
         notes: notesInput.value,
       }));
       if (saved) highlightTask(saved.id);
-      message = `Guardada en ${store.BUCKET_LABELS[draft.when]}`;
+      message = saved?.dueDate && saved.dueDate > today
+        ? `Guardada para ${relativeDayLabel(saved.dueDate, today).toLowerCase()}`
+        : `Guardada en ${store.BUCKET_LABELS[draft.when]}`;
     }
     if (!saved) {
       saveButton.disabled = false;
@@ -128,4 +149,9 @@ export function openQuickCapture() {
   });
 
   const sheet = openSheet({ title: 'Nueva tarea', content: form, initialFocus: titleInput });
+}
+
+/** Día prellenado → "¿Cuándo?": sin día u hoy/pasado → Hoy; futuro → Esta semana. */
+function bucketForDate(date, today) {
+  return date && date > today ? 'semana' : 'hoy';
 }
