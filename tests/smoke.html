@@ -104,6 +104,10 @@
     await store.updateTask(old.id, { done: true, doneAt: new Date(Date.now() - 86400000 * 2).toISOString() });
     await store.addTask({ title: 'Futura', area: 'meta', bucket: 'semana', dueDate: dates.addDays(today, 2) });
     await store.addTask({ title: 'Con hora', area: 'ventas', bucket: 'hoy', time: '09:30' });
+    await store.addFollowup({ title: 'Cartel gomería · San José', area: 'carteleria', nextAction: 'Consultar a MTOP', dueDate: dates.addDays(today, -3), owner: 'me' });
+    await store.addFollowup({ title: 'Orden E01-000055 sin cliente', area: 'ventas', nextAction: 'Pedir el cliente a sistemas', dueDate: today, owner: 'me' });
+    await store.addFollowup({ title: 'Permiso de cartel · Canelones', area: 'carteleria', nextAction: 'Esperar firma', dueDate: dates.addDays(today, 2), owner: 'other', waitingFor: 'propietario' });
+    await store.addFollowup({ title: 'Cotización de banners 70×110', area: 'carteleria', nextAction: 'Esperar precio', dueDate: dates.addDays(today, 6), owner: 'other', waitingFor: 'proveedor' });
 
     // ---------- La app ----------
     const frame = document.getElementById('app');
@@ -270,6 +274,101 @@
     await waitFor(() => p$('.process-card__title')?.textContent.startsWith('Revisión semanal · semana del'));
     check('Plantilla semanal creada y seleccionada', p$('.process-card__title')?.textContent.startsWith('Revisión semanal · semana del'), p$('.process-card__title')?.textContent);
     check('Aparece el selector de procesos', p$$('.view > .field .chip').length === 2, String(p$$('.view > .field .chip').length) + ' chips; ' + p$$('.chip').map((c) => c.textContent).join(','));
+
+    // ---------- Seguimientos ----------
+    const closed = () => waitFor(() => !pd.querySelector('.sheet-backdrop'), 1000);
+    const cardOf = (title) => p$$('.fu-card').find((c) => c.querySelector('.fu-card__title')?.textContent === title);
+    const chipOf = (text) => p$$('.view .chip').find((c) => c.textContent.startsWith(text));
+    const lastToastAction = () => [...pd.querySelectorAll('.toast__action')].at(-1);
+
+    pw.location.hash = 'hoy';
+    await waitFor(() => p$('.tiles'));
+    check('Globito rojo en la pestaña = 1', p$('#badge-seguimientos')?.textContent === '1' && !p$('#badge-seguimientos').hidden);
+    check('Tile de vencidos en rojo = 1', p$('.tile__value--danger')?.textContent === '1');
+    const waiting = p$$('.followup-row__title').map((n) => n.textContent);
+    check('"Esperando a alguien": solo los de los próximos 3 días', waiting.includes('Permiso de cartel · Canelones') && !waiting.includes('Cotización de banners 70×110'), waiting.join(' | '));
+
+    p$$('.tile')[1].click(); // tile de vencidos
+    await waitFor(() => p$('.title')?.textContent === 'Seguimientos');
+    check('El tile lleva a Seguimientos filtrado por Vencidos', chipOf('Vencidos')?.getAttribute('aria-pressed') === 'true' && p$$('.fu-card').length === 1);
+    check('Vencido en rojo con "Venció …"', cardOf('Cartel gomería · San José')?.classList.contains('is-overdue') && cardOf('Cartel gomería · San José').querySelector('.date-pill--danger')?.textContent.startsWith('Venció'));
+
+    chipOf('Todos').click();
+    await waitFor(() => p$$('.fu-card').length === 4);
+    check('Filtro Todos: 4 tarjetas, vencido arriba', p$$('.fu-card').length === 4 && p$('.fu-card__title')?.textContent === 'Cartel gomería · San José');
+    check('Contadores de filtros', ['Todos4', 'Vencidos1', 'Me toca2', 'Esperando2'].every((t) => p$$('.view .chip').some((c) => c.textContent === t)), p$$('.view .chip').map((c) => c.textContent).join(','));
+    check('Pastilla "Hoy" y "Esperando a otro · propietario"', cardOf('Orden E01-000055 sin cliente')?.querySelector('.date-pill--today')?.textContent === 'Hoy' && cardOf('Permiso de cartel · Canelones')?.querySelector('.owner-pill')?.textContent === 'Esperando a otro · propietario');
+
+    // Detalle: posponer + deshacer
+    cardOf('Orden E01-000055 sin cliente').querySelector('.fu-card__main').click();
+    await waitFor(() => pd.querySelector('.sheet .sheet-section'));
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === '+1 día').click();
+    await waitFor(() => pd.querySelector('.sheet .date-pill')?.textContent === 'Mañana');
+    check('Posponer +1 día → "Mañana"', pd.querySelector('.sheet .date-pill')?.textContent === 'Mañana');
+    check('Posponer queda en la bitácora', pd.querySelector('.sheet .log-row__text')?.textContent.startsWith('Pospuesto para el'));
+    lastToastAction().click();
+    await waitFor(() => pd.querySelector('.sheet .date-pill')?.textContent === 'Hoy');
+    check('Deshacer posponer', pd.querySelector('.sheet .date-pill')?.textContent === 'Hoy' && !pd.querySelector('.sheet .log-row'));
+
+    // Registrar avance
+    const progressText = pd.querySelector('.sheet .sheet-section textarea');
+    progressText.value = 'Sistemas dice que lo revisa mañana';
+    progressText.dispatchEvent(new pw.Event('input', { bubbles: true }));
+    const nextIn = [...pd.querySelectorAll('.sheet .sheet-section input[type="text"]')][0];
+    nextIn.value = 'Volver a consultar a sistemas';
+    [...pd.querySelectorAll('.sheet .btn-secondary')].find((b) => b.textContent.includes('Registrar avance')).click();
+    await waitFor(() => pd.querySelector('.sheet .log-row__text')?.textContent === 'Sistemas dice que lo revisa mañana');
+    check('Registrar avance agrega a la bitácora', pd.querySelector('.sheet .log-row__text')?.textContent === 'Sistemas dice que lo revisa mañana');
+    check('Registrar avance actualiza la próxima acción y la fecha', pd.querySelector('.sheet .fu-card__next')?.textContent === 'Volver a consultar a sistemas' && pd.querySelector('.sheet .date-pill')?.textContent === 'Mañana');
+
+    // Marcar resuelto desde el detalle + deshacer
+    [...pd.querySelectorAll('.sheet .btn-primary')].find((b) => b.textContent === 'Marcar resuelto').click();
+    await closed();
+    await waitFor(() => !cardOf('Orden E01-000055 sin cliente'));
+    check('Resuelto sale de la lista', !cardOf('Orden E01-000055 sin cliente'));
+    check('Aparece en "Resueltos"', p$$('.fold .followup-row__title').some((n) => n.textContent === 'Orden E01-000055 sin cliente'));
+    lastToastAction().click();
+    await waitFor(() => cardOf('Orden E01-000055 sin cliente'));
+    check('Deshacer resuelto', Boolean(cardOf('Orden E01-000055 sin cliente')));
+
+    // Marcar resuelto desde la tarjeta
+    cardOf('Cotización de banners 70×110').querySelector('.fu-resolve').click();
+    await waitFor(() => !cardOf('Cotización de banners 70×110'));
+    check('"Marcar resuelto" desde la tarjeta', !cardOf('Cotización de banners 70×110'));
+
+    // Captura de seguimiento desde el +
+    p$('#fab').click();
+    const fuTitle = await waitFor(() => pd.querySelector('.sheet input[type="text"]'));
+    fuTitle.value = 'Cotización vinilo · Florida';
+    fuTitle.dispatchEvent(new pw.Event('input', { bubbles: true }));
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'Es un seguimiento').click();
+    check('"Es un seguimiento" muestra sus campos', !pd.querySelector('.sheet .form-group--wide').hidden && pd.querySelector('.sheet details.more').hidden);
+    pd.querySelector('.sheet .form-group--wide input[type="text"]').value = 'Pedir precio con instalación';
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'En 3 días').click();
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'Esperando a otro').click();
+    const whoIn = [...pd.querySelectorAll('.sheet .form-group--wide input[type="text"]')].at(-1);
+    whoIn.value = 'proveedor';
+    fuTitle.form.requestSubmit();
+    await waitFor(() => cardOf('Cotización vinilo · Florida'));
+    const newCard = cardOf('Cotización vinilo · Florida');
+    check('Seguimiento cargado desde el +', Boolean(newCard) && p$$('.toast').at(-1)?.textContent.includes('Guardado en Seguimientos'));
+    check('Con próxima acción, fecha en 3 días y "Esperando a otro · proveedor"',
+      newCard?.querySelector('.fu-card__next')?.textContent === 'Pedir precio con instalación'
+      && newCard?.querySelector('.date-pill')?.textContent === dates.relativeDayLabel(dates.addDays(today, 3), today)
+      && newCard?.querySelector('.owner-pill')?.textContent === 'Esperando a otro · proveedor');
+    await closed();
+
+    // Eliminar con confirmación + deshacer
+    newCard.querySelector('.fu-card__main').click();
+    await waitFor(() => pd.querySelector('.sheet .btn-danger'));
+    const delFu = pd.querySelector('.sheet .btn-danger');
+    delFu.click();
+    delFu.click();
+    await waitFor(() => !cardOf('Cotización vinilo · Florida'));
+    check('Eliminar seguimiento', !cardOf('Cotización vinilo · Florida'));
+    lastToastAction().click();
+    await waitFor(() => cardOf('Cotización vinilo · Florida'));
+    check('Deshacer eliminar seguimiento', Boolean(cardOf('Cotización vinilo · Florida')));
 
     report(failures === 0 ? 'TODO OK' : `${failures} FALLAS`);
   </script>
