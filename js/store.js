@@ -33,6 +33,8 @@ const state = {
   followups: [],
   templates: [],
   runs: [],
+  projects: [],
+  pdvs: [],
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -52,17 +54,21 @@ function notify() {
 // ---------- Arranque ----------
 
 export async function init() {
-  const [tasks, followups, templates, runs, settingsRows] = await Promise.all([
+  const [tasks, followups, templates, runs, projects, pdvs, settingsRows] = await Promise.all([
     db.getAll('tasks'),
     db.getAll('followups'),
     db.getAll('processTemplates'),
     db.getAll('processRuns'),
+    db.getAll('projects'),
+    db.getAll('pdvs'),
     db.getAll('settings'),
   ]);
   state.tasks = tasks;
   state.followups = followups;
   state.templates = templates;
   state.runs = runs;
+  state.projects = projects;
+  state.pdvs = pdvs;
   state.settings = { ...DEFAULT_SETTINGS };
   for (const row of settingsRows) state.settings[row.key] = row.value;
 
@@ -564,6 +570,196 @@ export function getBadgeCount(today = todayISO()) {
   return countPendingToday(today) + countOverdueFollowups(today);
 }
 
+// ---------- Proyectos y PDV ----------
+
+export const PDV_STATUSES = {
+  PENDIENTE: 'Pendiente',
+  RELEVADO: 'Relevado',
+  CAMBIO: 'Cambio',
+  INSTALADO: 'Instalado',
+  REEMPLAZADO: 'Reemplazado',
+};
+
+/** Etapas detalladas de cada PDV, en orden. */
+export const PDV_STAGES = [
+  { id: 'relevado', label: 'Relevado' },
+  { id: 'fotomontaje_recibido', label: 'Fotomontaje recibido' },
+  { id: 'aprobado_cliente', label: 'Aprobado por el cliente' },
+  { id: 'instalacion_agendada', label: 'Instalación agendada' },
+  { id: 'instalado', label: 'Instalado' },
+  { id: 'evidencia_cargada', label: 'Evidencia cargada' },
+  { id: 'carta_indemnidad_sharepoint', label: 'Carta de indemnidad firmada y subida a SharePoint' },
+];
+
+export const WAITING_FOR = { cliente: 'Cliente', proveedor: 'Proveedor', yo: 'Yo' };
+
+/** Código nuevo del sistema: "E" + 7 dígitos ("2195" → "E0002195"). */
+export function newPdvCode(code) {
+  return `E${String(code).padStart(7, '0')}`;
+}
+
+/** Etapas marcadas hasta `stageId` inclusive (para cargar datos o al pasar a Instalado). */
+export function stagesUpTo(stageId) {
+  const index = PDV_STAGES.findIndex((s) => s.id === stageId);
+  return Object.fromEntries(PDV_STAGES.slice(0, index + 1).map((s) => [s.id, true]));
+}
+
+const round2 = (n) => Math.round(n * 100) / 100;
+
+export function getProjects() {
+  return [...state.projects].sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+}
+
+export function getProject(id) {
+  return state.projects.find((p) => p.id === id) ?? null;
+}
+
+/** El proyecto de prioridad #1 (el que va en la tarjeta de Hoy). */
+export function getPriorityProject() {
+  return getProjects()[0] ?? null;
+}
+
+export function getPdv(id) {
+  return state.pdvs.find((p) => p.id === id) ?? null;
+}
+
+/** PDV del proyecto. Los reemplazados no cuentan para los 37, pero se pueden pedir. */
+export function getProjectPdvs(projectId, { includeReplaced = false } = {}) {
+  return state.pdvs.filter((p) => p.projectId === projectId && (includeReplaced || p.status !== 'REEMPLAZADO'));
+}
+
+/** Falta = no instalado (y no reemplazado). */
+export function isPdvMissing(pdv) {
+  return pdv.status !== 'INSTALADO' && pdv.status !== 'REEMPLAZADO';
+}
+
+export function isPdvOverdue(pdv, today = todayISO()) {
+  return isPdvMissing(pdv) && Boolean(pdv.nextDate) && pdv.nextDate < today;
+}
+
+/** Números del proyecto: instalados, faltan (por estado) e inversión en USD. */
+export function getProjectStats(projectId) {
+  const project = getProject(projectId);
+  const pdvs = getProjectPdvs(projectId);
+  const installed = pdvs.filter((p) => p.status === 'INSTALADO');
+  const missing = pdvs.filter(isPdvMissing);
+  const sum = (list) => round2(list.reduce((total, p) => total + (p.quoteUSD ?? 0), 0));
+  const goal = project?.goal ?? pdvs.length;
+  return {
+    goal,
+    count: pdvs.length,
+    installed: installed.length,
+    missing: missing.length,
+    byStatus: {
+      PENDIENTE: missing.filter((p) => p.status === 'PENDIENTE').length,
+      RELEVADO: missing.filter((p) => p.status === 'RELEVADO').length,
+      CAMBIO: missing.filter((p) => p.status === 'CAMBIO').length,
+    },
+    installedUSD: sum(installed),
+    pendingUSD: sum(missing),
+    totalUSD: sum(pdvs),
+    percent: goal ? Math.round((installed.length / goal) * 100) : 0,
+  };
+}
+
+/** Lo próximo del proyecto: el día más cercano con próximas acciones (incluye las vencidas). */
+export function getProjectNext(projectId, today = todayISO()) {
+  const dated = getProjectPdvs(projectId)
+    .filter((p) => isPdvMissing(p) && p.nextDate)
+    .sort((a, b) => a.nextDate.localeCompare(b.nextDate));
+  if (dated.length === 0) return null;
+  const date = dated[0].nextDate;
+  return { date, overdue: date < today, pdvs: dated.filter((p) => p.nextDate === date) };
+}
+
+async function saveProject(project) {
+  await db.put('projects', project);
+  const index = state.projects.findIndex((p) => p.id === project.id);
+  if (index >= 0) state.projects[index] = project;
+  else state.projects.push(project);
+  notify();
+  return project;
+}
+
+async function savePdv(pdv) {
+  await db.put('pdvs', pdv);
+  const index = state.pdvs.findIndex((p) => p.id === pdv.id);
+  if (index >= 0) state.pdvs[index] = pdv;
+  else state.pdvs.push(pdv);
+  notify();
+  return pdv;
+}
+
+function findPdv(id) {
+  const pdv = getPdv(id);
+  if (!pdv) throw new Error(`No existe el PDV ${id}`);
+  return pdv;
+}
+
+/** Para la importación de datos de trabajo. */
+export function addProject(project) {
+  return saveProject({ createdAt: new Date().toISOString(), ...project });
+}
+
+export function addPdv(pdv) {
+  return savePdv({ history: [], stages: {}, review: [], createdAt: new Date().toISOString(), ...pdv });
+}
+
+export function updateProject(id, patch) {
+  const project = getProject(id);
+  if (!project) throw new Error(`No existe el proyecto ${id}`);
+  return saveProject({ ...project, ...patch });
+}
+
+const logEntry = (text) => ({ date: new Date().toISOString(), text });
+
+/**
+ * Edita datos del PDV. Si cambia el estado, queda anotado en la bitácora;
+ * pasar a Instalado marca las etapas hasta "Instalado".
+ */
+export function updatePdv(id, patch) {
+  const pdv = findPdv(id);
+  const updated = { ...pdv, ...patch };
+  if (patch.status && patch.status !== pdv.status) {
+    updated.history = [...pdv.history, logEntry(`Estado: ${PDV_STATUSES[pdv.status]} → ${PDV_STATUSES[patch.status]}`)];
+    if (patch.status === 'INSTALADO') updated.stages = { ...pdv.stages, ...stagesUpTo('instalado') };
+  }
+  return savePdv(updated);
+}
+
+/** Marca o desmarca una etapa. Marcar "Instalado" pasa el estado a Instalado. */
+export function togglePdvStage(id, stageId) {
+  const pdv = findPdv(id);
+  const stages = { ...pdv.stages, [stageId]: !pdv.stages?.[stageId] };
+  if (stageId === 'instalado' && stages.instalado && pdv.status !== 'INSTALADO') {
+    return updatePdv(id, { stages, status: 'INSTALADO' });
+  }
+  return savePdv({ ...pdv, stages });
+}
+
+/** "Registrar avance": anota en la bitácora y define la próxima acción, fecha y a quién se espera. */
+export function logPdvProgress(id, { text, nextAction, nextDate, waitingFor }) {
+  const pdv = findPdv(id);
+  return savePdv({
+    ...pdv,
+    history: [...pdv.history, logEntry(text.trim())],
+    nextAction: nextAction.trim(),
+    nextDate: nextDate || null,
+    waitingFor: waitingFor || null,
+  });
+}
+
+/** Para "Deshacer": vuelve a guardar una copia exacta de cómo estaba. */
+export function restorePdv(snapshot) {
+  return savePdv(snapshot);
+}
+
+/** "Ya lo revisé": saca el aviso de datos a revisar. */
+export function clearPdvReview(id) {
+  const pdv = findPdv(id);
+  return savePdv({ ...pdv, review: [], history: [...pdv.history, logEntry('Datos revisados')] });
+}
+
 // ---------- Áreas ----------
 
 /** Paleta para las áreas: color del texto y fondo de la etiqueta (16% de opacidad). */
@@ -659,8 +855,10 @@ export async function clearSampleData() {
 
 // ---------- Backup ----------
 
-export const BACKUP_SCHEMA_VERSION = 1;
-const BACKUP_STORES = ['tasks', 'followups', 'processTemplates', 'processRuns', 'settings'];
+// v2 suma proyectos y PDV. Las copias v1 se siguen pudiendo importar (sin proyectos).
+export const BACKUP_SCHEMA_VERSION = 2;
+const BACKUP_STORES = ['tasks', 'followups', 'processTemplates', 'processRuns', 'projects', 'pdvs', 'settings'];
+const OPTIONAL_STORES = new Set(['projects', 'pdvs']);
 
 /** Todo lo guardado, listo para convertir a JSON. */
 export async function exportBackup() {
@@ -678,6 +876,8 @@ const BACKUP_CHECKS = {
   followups: (f) => isText(f?.id) && isText(f?.title) && isText(f?.dueDate) && Array.isArray(f?.history),
   processTemplates: (t) => isText(t?.id) && isText(t?.name) && Array.isArray(t?.groups),
   processRuns: (r) => isText(r?.id) && isText(r?.templateId) && isText(r?.period) && typeof r?.checked === 'object',
+  projects: (p) => isText(p?.id) && isText(p?.name),
+  pdvs: (p) => isText(p?.id) && isText(p?.projectId) && isText(p?.code) && Array.isArray(p?.history),
   settings: (s) => isText(s?.key),
 };
 
@@ -698,6 +898,7 @@ export function parseBackup(text) {
   }
   const data = backup.data ?? {};
   for (const [name, check] of Object.entries(BACKUP_CHECKS)) {
+    if (OPTIONAL_STORES.has(name) && data[name] === undefined) continue;
     if (!Array.isArray(data[name])) return { error: 'A la copia le faltan datos: no se puede importar.' };
     if (!data[name].every(check)) return { error: 'La copia tiene datos dañados: no se puede importar.' };
   }
@@ -714,7 +915,7 @@ export function parseBackup(text) {
 
 /** Reemplaza TODO por el contenido del backup (ya validado con parseBackup). */
 export async function importBackup(backup) {
-  await db.replaceAll(Object.fromEntries(BACKUP_STORES.map((name) => [name, backup.data[name]])));
+  await db.replaceAll(Object.fromEntries(BACKUP_STORES.map((name) => [name, backup.data[name] ?? []])));
   await init();
   notify();
 }

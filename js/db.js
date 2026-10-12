@@ -2,7 +2,7 @@
 // los datos en el propio teléfono). Convierte su API de eventos en promesas.
 
 const DB_NAME = 'centro-mando';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -24,6 +24,11 @@ export function openDB() {
         db.createObjectStore('processTemplates', { keyPath: 'id' });
         db.createObjectStore('processRuns', { keyPath: 'id' });
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+      // v2: proyectos (ej. "Estandarización 37 PDV") y sus puntos de venta.
+      if (event.oldVersion < 2) {
+        db.createObjectStore('projects', { keyPath: 'id' });
+        db.createObjectStore('pdvs', { keyPath: 'id' });
       }
     };
     request.onsuccess = () => {
