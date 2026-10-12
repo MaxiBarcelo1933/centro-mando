@@ -73,7 +73,12 @@ Colores de área (texto / fondo 16%):
 ## Modelo de datos (stores de IndexedDB; detalle en spec §5)
 `tasks`, `followups`, `processTemplates`, `processRuns`, `settings` (clave-valor).
 
-Decisiones/ajustes sobre la spec (pendientes de confirmación del usuario en Fase 0):
+Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
+- "Algún día": sección plegada en Hoy, debajo de "Esta semana".
+- "Esta semana" no vence: las tareas quedan ahí hasta pasarlas a hoy o completarlas.
+- Historial de tareas hechas: lista simple "Hechas" en Ajustes, agrupada por día.
+- Deslizar tarea a la izquierda (Mañana / Eliminar): se deja para el pulido de la Fase 5.
+- Cuenta/repo de GitHub: preguntar en la Fase 6 (usuario git local: MaxiBarcelo1933).
 - Tareas: una tarea "Hoy" guarda también `dueDate` = el día en que se planificó.
   "Atrasada" = no completada y `dueDate` < hoy. "Pasar a hoy" y "Mañana" solo cambian
   `dueDate`/`bucket`. Así no se depende de `createdAt`.
@@ -92,13 +97,25 @@ Decisiones/ajustes sobre la spec (pendientes de confirmación del usuario en Fas
 - Scroll solo dentro del contenedor de contenido; body fijo, `overscroll-behavior: contain`.
 
 ## Fases
-0. Plan (CLAUDE.md, README.md, git) ← hecha
-1. Esqueleto PWA (HTML, tokens, tabs, FAB, manifest, íconos, SW, banner de instalación)
+0. Plan (CLAUDE.md, README.md, git) ✓
+1. Esqueleto PWA (HTML, tokens, tabs, FAB, manifest, íconos, SW, banner de instalación) ✓
 2. DB + Hoy + captura rápida (solo tareas)
 3. Procesos (plantillas, runs, variables, seed, edición, historial)
 4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura)
 5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido)
 6. Publicación (GitHub Pages + prueba en iPhone)
 
+## Notas de implementación
+- DOM: usar `el()` de `js/dom.js` (agrega textos como nodos de texto, nunca HTML).
+  Íconos con `icon()` / `illustration()` de `js/icons.js` (strings SVG fijos y confiables).
+- Router: hash (`#hoy`, `#procesos`, `#seguimientos`); `render()` en `js/app.js` redibuja la vista.
+- `sw.js`: lista `ASSETS` → **sumar cada archivo nuevo** y subir `CACHE_VERSION` al publicar.
+  En localhost usa network-first (para desarrollar); publicado, cache-first.
+  `skipWaiting` + `clients.claim`; la app muestra toast "Recargar" al cambiar de versión.
+- Banner de instalación: solo iOS + no instalada. Descartado en localStorage
+  (`mando.installBannerDismissed`) → mover al store `settings` en la Fase 2.
+- Probar: `tools/serve.ps1` + Chrome headless para capturas
+  (`--window-size` no baja de ~500 px de ancho en headless: usar 500 para ver todo).
+
 ## Estado actual
-Fase 0 en curso. Sin código de la app todavía.
+Fase 1 hecha (esqueleto PWA). Próxima: Fase 2.
