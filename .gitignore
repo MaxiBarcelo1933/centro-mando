@@ -12,3 +12,7 @@ centro-mando-backup-*.json
 
 # Resultado de las pruebas automáticas
 tests/last-result.txt
+
+# Datos de trabajo reales (clientes, montos): se cargan en el iPhone desde Ajustes, no se publican
+data/
+prompt-cargar-tareas.md
