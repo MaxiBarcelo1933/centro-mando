@@ -99,7 +99,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 ## Fases
 0. Plan (CLAUDE.md, README.md, git) ✓
 1. Esqueleto PWA (HTML, tokens, tabs, FAB, manifest, íconos, SW, banner de instalación) ✓
-2. DB + Hoy + captura rápida (solo tareas)
+2. DB + Hoy + captura rápida (solo tareas) ✓
 3. Procesos (plantillas, runs, variables, seed, edición, historial)
 4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura)
 5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido)
@@ -114,8 +114,29 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   `skipWaiting` + `clients.claim`; la app muestra toast "Recargar" al cambiar de versión.
 - Banner de instalación: solo iOS + no instalada. Descartado en localStorage
   (`mando.installBannerDismissed`) → mover al store `settings` en la Fase 2.
-- Probar: `tools/serve.ps1` + Chrome headless para capturas
-  (`--window-size` no baja de ~500 px de ancho en headless: usar 500 para ver todo).
+- Store (`js/store.js`): estado en memoria + escrituras async a IndexedDB + `subscribe()`.
+  `app.js` se suscribe con `render()` (redibuja toda la vista y actualiza globito/badge).
+  Escrituras desde vistas envueltas en `tryAction()` (toast amigable si falla).
+- Reglas de tareas: `classifyTask()` decide la sección (today / upcoming / week / someday / hidden).
+  Hoy siempre con `dueDate`; atrasada = no hecha y `dueDate` < hoy; las de fecha futura
+  se muestran en "Esta semana". Hechas otro día = ocultas (historial en Fase 5).
+- Fechas: nombres de meses/días propios en `dates.js` (no Intl: es-UY daría "setiembre").
+- Sheet (`components/sheet.js`): pone el foco sincrónicamente (teclado iOS), sube sobre el
+  teclado con `visualViewport` (`--keyboard`), `inert` en `#app`, Escape, arrastrar para cerrar.
+- Ajustes en store `settings` (clave-valor): areas, lastArea, installBannerDismissed,
+  badgeEnabled, lastBackupAt.
+
+## Pruebas y herramientas (todas necesitan `tools/serve.ps1` corriendo)
+- `tools/test.ps1`: corre `tests/smoke.html` en Chrome headless (perfil temporal). La página
+  manda el resultado por POST a `/tests/report`, serve.ps1 lo guarda en `tests/last-result.txt`.
+  (`--dump-dom`/`--virtual-time-budget` NO sirven: cortan antes de que termine IndexedDB.)
+- `tools/screenshot.ps1 -Out x.png [-Path '#hoy'] [-ScriptFile seed.js]`: captura 440×956 vía
+  protocolo de depuración. El script corre en la página de la app; con
+  `await import('./js/store.js')` se usa la misma instancia del store (carga datos y redibuja).
+- Agregar a `tests/smoke.html` pruebas de cada fase nueva.
 
 ## Estado actual
-Fase 1 hecha (esqueleto PWA). Próxima: Fase 2.
+Fase 2 hecha (DB, Hoy, captura rápida). Próxima: Fase 3 (Procesos).
+Pendiente para fases siguientes: "Es un seguimiento" en la captura (Fase 4), detalle de
+seguimiento desde "Esperando a alguien" (Fase 4), Ajustes desde el avatar (Fase 5),
+tile "Cierre de mes" (`store.getClosingProgress`, Fase 3).

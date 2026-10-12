@@ -28,6 +28,15 @@ Notas:
 - Mientras programamos, el service worker en `localhost` pide siempre la versión nueva, así ves los cambios con solo recargar.
 - Para probar sin internet: F12 → pestaña **Network** → **Offline**, y recargá.
 
+### Pruebas automáticas
+Con el servidor corriendo, en **otra** ventana de PowerShell:
+```
+powershell -ExecutionPolicy Bypass -File tools\test.ps1
+```
+Abre un Chrome invisible (con un perfil aparte, no toca tus datos), usa la app sola
+(carga tareas, las completa, las edita, las borra) y te muestra la lista de pruebas con
+OK o FALLA. Al final tiene que decir **Resultado: TODO OK**.
+
 ### Regenerar los íconos
 ```
 powershell -ExecutionPolicy Bypass -File tools\make-icons.ps1
