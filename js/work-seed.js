@@ -14,7 +14,14 @@ const KINDS = {
   areas: 'Áreas',
   tasks: 'Tareas',
   followups: 'Seguimientos',
+  projects: 'Proyectos',
+  pdvs: 'PDV',
 };
+
+const isNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+
+/** id interno de un PDV: proyecto + código (el código es el identificador, nunca el nombre). */
+export const pdvId = (projectId, code) => `${projectId}:${code}`;
 
 const isText = (value) => typeof value === 'string' && value.trim() !== '';
 const isDate = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -22,7 +29,7 @@ const isTime = (value) => typeof value === 'string' && /^\d{2}:\d{2}$/.test(valu
 
 /**
  * Lee y revisa el archivo ANTES de tocar nada.
- * Devuelve { seed, pending: { areas, tasks, followups }, existing } o { error }.
+ * Devuelve { seed, pending: { areas, tasks, followups, projects, pdvs }, existing } o { error }.
  */
 export function parseWorkSeed(text) {
   let seed;
@@ -37,10 +44,16 @@ export function parseWorkSeed(text) {
   const areas = seed.areas ?? [];
   const tasks = seed.tasks ?? [];
   const followups = seed.followups ?? [];
-  if (![areas, tasks, followups].every(Array.isArray)) return { error: 'El archivo tiene listas dañadas.' };
+  const projects = seed.projects ?? [];
+  if (![areas, tasks, followups, projects].every(Array.isArray)) return { error: 'El archivo tiene listas dañadas.' };
+
+  const projectError = projects.map(checkProject).find(Boolean);
+  if (projectError) return { error: projectError };
+  // Cada PDV usa como seedId "proyecto:código".
+  const pdvs = projects.flatMap((project) => project.pdv.map((pdv) => ({ ...pdv, seedId: pdvId(project.seedId, pdv.codigo), project })));
 
   // Los seedId no se pueden repetir en todo el archivo.
-  const ids = [...areas, ...tasks, ...followups].map((item) => item?.seedId);
+  const ids = [...areas, ...tasks, ...followups, ...projects, ...pdvs].map((item) => item?.seedId);
   if (!ids.every(isText)) return { error: 'Hay elementos sin seedId.' };
   const repeated = ids.find((id, i) => ids.indexOf(id) !== i);
   if (repeated) return { error: `El seedId "${repeated}" está repetido.` };
@@ -77,9 +90,38 @@ export function parseWorkSeed(text) {
     areas: areas.filter((a) => isNew(a) && !areaExists(a.id)),
     tasks: tasks.filter(isNew),
     followups: followups.filter(isNew),
+    projects: projects.filter((p) => isNew(p) && !store.getProject(p.seedId)),
+    pdvs: pdvs.filter((p) => isNew(p) && !store.getPdv(p.seedId)),
   };
-  const existing = ids.length - pending.areas.length - pending.tasks.length - pending.followups.length;
-  return { seed, pending, existing };
+  const added = Object.values(pending).reduce((total, list) => total + list.length, 0);
+  return { seed, pending, existing: ids.length - added };
+}
+
+/** Revisa un proyecto y sus PDV. Devuelve el mensaje de error o null. */
+function checkProject(project) {
+  if (!isText(project?.seedId) || !isText(project.nombre)) return 'A un proyecto le falta seedId o nombre.';
+  if (!Array.isArray(project.pdv)) return `Al proyecto ${project.seedId} le falta la lista de PDV.`;
+  if (!isNumber(project.cotizacionUSD)) return `Al proyecto ${project.seedId} le falta la cotización del dólar.`;
+  const codes = new Set();
+  for (const pdv of project.pdv) {
+    if (!isText(pdv?.codigo) || !isText(pdv.cliente)) return 'Hay un PDV sin código o sin cliente.';
+    if (codes.has(pdv.codigo)) return `El código de PDV ${pdv.codigo} está repetido.`;
+    codes.add(pdv.codigo);
+    if (!Object.hasOwn(store.PDV_STATUSES, pdv.estado)) return `El PDV ${pdv.codigo} tiene un estado inválido ("${pdv.estado}").`;
+    if (!isNumber(pdv.cotizacionUSD)) return `El PDV ${pdv.codigo} no tiene cotización en USD.`;
+    if (pdv.etapa != null && !store.PDV_STAGES.some((s) => s.id === pdv.etapa)) return `El PDV ${pdv.codigo} tiene una etapa inválida.`;
+    if (pdv.fechaProxima != null && !isDate(pdv.fechaProxima)) return `El PDV ${pdv.codigo} tiene una fecha inválida.`;
+    if (pdv.esperandoA != null && !Object.hasOwn(store.WAITING_FOR, pdv.esperandoA)) return `El PDV ${pdv.codigo} tiene un "esperandoA" inválido.`;
+  }
+  // El total tiene que dar la meta (ej. 37): si no, algo se cargó mal.
+  const active = project.pdv.filter((p) => p.estado !== 'REEMPLAZADO').length;
+  if (isNumber(project.meta) && active !== project.meta) {
+    return `El proyecto ${project.nombre} tiene ${active} PDV y la meta es ${project.meta}. Revisá el archivo.`;
+  }
+  for (const item of project.datosARevisar ?? []) {
+    if (!codes.has(item?.codigo)) return `"Datos a revisar" menciona el PDV ${item?.codigo}, que no está en la lista.`;
+  }
+  return null;
 }
 
 /** ¿Ya se importó (o ya existe en la app) este seedId? */
@@ -130,17 +172,52 @@ export async function importWorkSeed(seed, today = todayISO()) {
     imported[followup.seedId] = { kind: 'followups', id: saved.id };
   }
 
+  for (const project of pending.projects) {
+    await store.addProject({
+      id: project.seedId,
+      seedId: project.seedId,
+      name: project.nombre,
+      priority: project.prioridad ?? 99,
+      goal: project.meta ?? project.pdv.length,
+      usdRate: project.cotizacionUSD,
+      owner: project.responsable ?? '',
+    });
+    imported[project.seedId] = { kind: 'projects', id: project.seedId };
+  }
+
+  for (const pdv of pending.pdvs) {
+    const project = pdv.project;
+    const review = (project.datosARevisar ?? []).filter((r) => r.codigo === pdv.codigo).map((r) => r.motivo);
+    await store.addPdv({
+      id: pdv.seedId,
+      seedId: pdv.seedId,
+      projectId: project.seedId,
+      code: pdv.codigo,
+      client: pdv.cliente,
+      department: pdv.departamento ?? '',
+      giro: pdv.giro ?? '',
+      zone: pdv.zona ?? null,
+      status: pdv.estado,
+      supplier: pdv.proveedor ?? '',
+      quoteUSD: pdv.cotizacionUSD,
+      estimatedFinish: pdv.finalizacionEstimada ?? '',
+      notes: pdv.observaciones ?? '',
+      nextAction: pdv.proximaAccion ?? '',
+      nextDate: pdv.fechaProxima ?? null,
+      waitingFor: pdv.esperandoA ?? null,
+      stages: pdv.etapa ? store.stagesUpTo(pdv.etapa) : {},
+      review,
+    });
+    imported[pdv.seedId] = { kind: 'pdvs', id: pdv.seedId };
+  }
+
   const previous = store.getSetting('workSeed');
   await store.setSetting('workSeed', {
     version: Math.max(seed.seedVersion, previous?.version ?? 0),
     importedAt: new Date().toISOString(),
     imported,
   });
-  return {
-    areas: pending.areas.length,
-    tasks: pending.tasks.length,
-    followups: pending.followups.length,
-  };
+  return Object.fromEntries(Object.entries(pending).map(([kind, list]) => [kind, list.length]));
 }
 
 /**
@@ -166,5 +243,10 @@ export function importedSummary() {
 function findById(kind, id) {
   if (kind === 'tasks') return store.getTask(id);
   if (kind === 'followups') return store.getFollowup(id);
+  if (kind === 'projects') return store.getProject(id);
+  if (kind === 'pdvs') {
+    const pdv = store.getPdv(id);
+    return pdv && { title: `${pdv.code} · ${pdv.client}` };
+  }
   return store.getAreas({ includeHidden: true }).find((a) => a.id === id) ?? null;
 }

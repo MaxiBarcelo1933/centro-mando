@@ -260,7 +260,8 @@ function workSection() {
 
   let status = 'Todavía no cargaste tus datos de trabajo.';
   if (summary) {
-    const counts = summary.groups.map((g) => `${g.items.length} ${g.label.toLowerCase()}`).join(', ');
+    const counts = summary.groups.filter((g) => g.items.length > 0)
+      .map((g) => `${g.items.length} ${g.kind === 'pdvs' ? g.label : g.label.toLowerCase()}`).join(', ');
     status = `Versión ${summary.version} · última importación: ${formatLongDate(dateOf(summary.importedAt))} (${counts}).`;
   }
 
@@ -286,7 +287,7 @@ async function previewWorkSeed(file) {
     return;
   }
   const { seed, pending, existing } = result;
-  const total = pending.areas.length + pending.tasks.length + pending.followups.length;
+  const total = Object.values(pending).reduce((sum, list) => sum + list.length, 0);
 
   const confirmButton = el('button', { class: 'btn-primary', type: 'button', disabled: total === 0 },
     total === 0 ? 'No hay nada nuevo' : `Agregar ${plural(total, 'elemento', 'elementos')}`);
@@ -298,13 +299,16 @@ async function previewWorkSeed(file) {
       return;
     }
     sheet.close();
-    showToast(`Listo: ${plural(added.tasks, 'tarea', 'tareas')} y ${plural(added.followups, 'seguimiento', 'seguimientos')} nuevos`);
+    const count = Object.values(added).reduce((sum, n) => sum + n, 0);
+    showToast(`Listo: ${plural(count, 'elemento nuevo', 'elementos nuevos')}`);
   });
 
   const lines = [
     pending.areas.length ? plural(pending.areas.length, 'área nueva', 'áreas nuevas') : null,
     pending.tasks.length ? plural(pending.tasks.length, 'tarea', 'tareas') : null,
     pending.followups.length ? plural(pending.followups.length, 'seguimiento', 'seguimientos') : null,
+    pending.projects.length ? plural(pending.projects.length, 'proyecto', 'proyectos') : null,
+    pending.pdvs.length ? plural(pending.pdvs.length, 'PDV', 'PDV') : null,
   ].filter(Boolean);
 
   const sheet = openSheet({
