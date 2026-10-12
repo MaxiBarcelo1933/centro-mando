@@ -38,3 +38,17 @@ export function showToast(message, { actionLabel, onAction, duration = 4000 } = 
   current = { node, dismiss };
   return { dismiss };
 }
+
+/**
+ * Ejecuta una acción que guarda datos. Si falla, muestra un mensaje amigable
+ * en vez de romper la app. Devuelve el resultado, o undefined si falló.
+ */
+export async function tryAction(action, errorMessage = 'No se pudo guardar el cambio. Probá de nuevo.') {
+  try {
+    return await action();
+  } catch (error) {
+    console.warn(error);
+    showToast(errorMessage);
+    return undefined;
+  }
+}
