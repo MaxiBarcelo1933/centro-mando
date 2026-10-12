@@ -9,7 +9,7 @@ Maximiliano (analista comercial, trade marketing, Baterías Moura Uruguay).
 Resuelve tres problemas: procesos mensuales que rehace de memoria, seguimientos
 largos que se le pasan, y tareas que llegan por muchos canales.
 
-Secciones: **Hoy**, **Procesos**, **Seguimientos** (pestañas) + **captura rápida**
+Secciones: **Hoy**, **Procesos**, **Seguimientos**, **Calendario** (pestañas) + **captura rápida**
 (botón "+" flotante en todas las pestañas) + **Ajustes** (desde el avatar "MB").
 
 ## Cómo trabajar con el usuario
@@ -52,7 +52,7 @@ Secciones: **Hoy**, **Procesos**, **Seguimientos** (pestañas) + **captura rápi
 index.html, manifest.webmanifest, sw.js
 css/tokens.css (variables de diseño), css/app.css
 js/app.js (arranque + router por pestañas), js/db.js, js/store.js, js/dates.js, js/seed.js
-js/views/{hoy,procesos,seguimientos,ajustes}.js
+js/views/{hoy,procesos,seguimientos,calendario,ajustes}.js
 js/components/{sheet,toast}.js
 icons/ (PNG 180, 192, 512, 512 maskable)
 tools/ (scripts de desarrollo, no se publican como parte de la app)
@@ -108,7 +108,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 ## Notas de implementación
 - DOM: usar `el()` de `js/dom.js` (agrega textos como nodos de texto, nunca HTML).
   Íconos con `icon()` / `illustration()` de `js/icons.js` (strings SVG fijos y confiables).
-- Router: hash (`#hoy`, `#procesos`, `#seguimientos`); `render()` en `js/app.js` redibuja la vista.
+- Router: hash (`#hoy`, `#procesos`, `#seguimientos`, `#calendario`); `render()` en `js/app.js` redibuja la vista.
 - `sw.js`: lista `ASSETS` → **sumar cada archivo nuevo** y subir `CACHE_VERSION` al publicar.
   En localhost usa network-first (para desarrollar); publicado, cache-first.
   `skipWaiting` + `clients.claim`; la app muestra toast "Recargar" al cambiar de versión.
@@ -166,6 +166,18 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 - Deslizar tarea (`components/swipe.js`): `touch-action: pan-y` en el contenido; el gesto se toma
   solo si es más horizontal que vertical. Acciones detrás con `aria-hidden`/`tabIndex` según estado.
 - Pruebas: para usar el MISMO store que la app dentro del iframe, se inyecta un
+
+- Calendario (`views/calendario.js`, pedido después de la Fase 6):
+  - Vistas Día (con horas), Semana laboral (lun–vie, con horas) y Mes (puntitos + lista del día).
+    Estado en `ui.calendarView` / `ui.calendarDate` (router).
+  - Muestra tareas con `dueDate` (hechas tachadas, atrasadas con borde rojo) y seguimientos abiertos
+    en su fecha límite (siempre en "Todo el día"). Tareas sin fecha no aparecen. Datos: `store.getCalendarItems(from, to)`.
+  - Las tareas no tienen duración: se dibujan como bloques de 30 min; si se pisan, se reparten el ancho.
+  - Franja 7–21 h, se amplía si hay algo antes o después. Línea ámbar de "ahora" en el día de hoy.
+  - Cada hora es un `button` (accesible): abre `openQuickCapture({ date, time })` en el mismo toque.
+    La captura ahora tiene "Fecha" en "Más detalles" (misma lógica que el editor de tareas).
+  - `app.js` pone `.content--fill` en esta pestaña: la barra de arriba queda fija y scrollea solo
+    `.cal__scroll` (posición guardada por vista para que no salte al redibujar).
   `<script type="module">` en el documento de la app (ver `tests/smoke.html`).
 
 ## Estado actual

@@ -1,7 +1,7 @@
 # Centro de Mando
 
-App personal (PWA) para organizar tareas en el iPhone: **Hoy**, **Procesos** y
-**Seguimientos**, con captura rápida desde el botón **+**.
+App personal (PWA) para organizar tareas en el iPhone: **Hoy**, **Procesos**, **Seguimientos** y
+**Calendario** (día, semana laboral y mes), con captura rápida desde el botón **+**.
 
 Funciona 100% offline y guarda todo en el propio teléfono (no hay servidor ni login).
 Por eso conviene exportar una copia de seguridad cada tanto desde **Ajustes → Backup**.
