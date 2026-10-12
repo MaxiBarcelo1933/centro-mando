@@ -102,7 +102,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 2. DB + Hoy + captura rápida (solo tareas) ✓
 3. Procesos (plantillas, runs, variables, seed, edición, historial) ✓
 4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura) ✓
-5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido)
+5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido) ✓
 6. Publicación (GitHub Pages + prueba en iPhone)
 
 ## Notas de implementación
@@ -153,7 +153,21 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   - Detalle (`views/followup-sheet.js`) se redibuja con `sheet.body.replaceChildren(build())` tras cada acción.
   - Piezas compartidas en `components/followup-bits.js` (dueDatePicker, ownerPicker, duePill, ownerPill).
 
+- Ajustes (`#ajustes`, no es pestaña; se abre desde el avatar):
+  - Áreas: paleta fija `store.AREA_PALETTE` (contraste controlado). No se borran, se ocultan;
+    "Otros" no se puede ocultar (fallback de `getArea`).
+  - Backup: `{ app: 'centro-mando', schemaVersion, exportedAt, data: {5 stores} }`.
+    `parseBackup()` valida TODO antes de tocar la base; `importBackup()` usa `db.replaceAll`
+    (una sola transacción) y vuelve a correr `init()`. Exportar: hoja de compartir solo en
+    dispositivos táctiles; en la PC, descarga.
+  - Datos de ejemplo con `sample: true` (`seed.js → sampleData`); se borran solo esos.
+  - Badge: `setAppBadge` solo si `badgeEnabled` (pide permiso de notificaciones al activarlo).
+  - Versión mostrada = nombre del caché del SW (`mando-vN` → "vN").
+- Deslizar tarea (`components/swipe.js`): `touch-action: pan-y` en el contenido; el gesto se toma
+  solo si es más horizontal que vertical. Acciones detrás con `aria-hidden`/`tabIndex` según estado.
+- Pruebas: para usar el MISMO store que la app dentro del iframe, se inyecta un
+  `<script type="module">` en el documento de la app (ver `tests/smoke.html`).
+
 ## Estado actual
-Fase 4 hecha (Seguimientos). Próxima: Fase 5 (Ajustes y cierre).
-Pendiente: Ajustes desde el avatar, áreas, backup, resumen del día, datos de ejemplo, badge,
-historial de tareas hechas, deslizar tarea (Mañana/Eliminar), pulido.
+Fase 5 hecha (Ajustes y cierre). Próxima: Fase 6 (Publicación en GitHub Pages + prueba en iPhone).
+Para la Fase 6: preguntar si tiene cuenta de GitHub y el nombre del repo; subir CACHE_VERSION.
