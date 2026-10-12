@@ -24,6 +24,13 @@
     import * as db from '../js/db.js';
     import * as periods from '../js/periods.js';
 
+    // Resguardo: las pruebas cargan y borran datos, así que solo corren en la compu.
+    // En la app publicada (GitHub Pages) no hacen nada, para no tocar tus datos reales.
+    if (!['localhost', '127.0.0.1'].includes(location.hostname)) {
+      document.getElementById('summary').textContent = 'Las pruebas solo se corren en la compu (localhost).';
+      await new Promise(() => {}); // se queda acá para siempre
+    }
+
     // Manda el resultado al servidor local (tools/serve.ps1 lo guarda para tools/test.ps1).
     function report(summary) {
       document.getElementById('summary').textContent = summary;

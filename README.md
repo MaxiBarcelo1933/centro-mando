@@ -42,15 +42,40 @@ OK o FALLA. Al final tiene que decir **Resultado: TODO OK**.
 powershell -ExecutionPolicy Bypass -File tools\make-icons.ps1
 ```
 
-## Cómo instalarla en el iPhone
-_(Se completa en la Fase 6.)_
+## Dónde está publicada
+**https://maxibarcelo1933.github.io/centro-mando/**
 
-1. Abrí la dirección de la app en **Safari**.
-2. Tocá **Compartir → Agregar a inicio**.
-3. Abrila desde el ícono **Mando**.
+(GitHub Pages publica automáticamente lo que esté en la rama `main` del repositorio
+`MaxiBarcelo1933/centro-mando`.)
+
+## Cómo instalarla en el iPhone
+1. Abrí **https://maxibarcelo1933.github.io/centro-mando/** en **Safari**
+   (tiene que ser Safari: desde Chrome del iPhone no se instala igual).
+2. Tocá el botón **Compartir** (el cuadrado con la flecha para arriba, abajo al medio).
+3. Bajá y tocá **Agregar a inicio** → dejá el nombre **Mando** → **Agregar**.
+4. Abrila siempre desde el ícono **Mando** de la pantalla de inicio (no desde Safari):
+   así se abre a pantalla completa y tus datos quedan en la app instalada.
+
+Importante: los datos que cargues en Safari y los de la app instalada son **distintos**
+(iOS los guarda por separado). Usá siempre la app instalada.
 
 ## Cómo publicar una actualización
-_(Se completa en la Fase 6.)_
+1. Hacé los cambios y probalos en la compu (servidor local + `tools\test.ps1`).
+2. En `sw.js`, subí la versión: `const CACHE_VERSION = 'v1';` → `'v2'` (después `'v3'`, etc.).
+   Sin este paso el teléfono sigue usando la copia vieja que tiene guardada.
+3. Guardá y subí los cambios:
+   ```
+   git add -A
+   git commit -m "Qué cambió"
+   git push
+   ```
+4. Esperá 1–2 minutos (GitHub Pages publica solo).
+5. En el iPhone, abrí la app: al detectar la versión nueva aparece el aviso
+   **"Hay una versión nueva de la app" → Recargar**. Si no aparece, cerrala del todo
+   (deslizándola hacia arriba en el selector de apps) y abrila de nuevo, o andá a
+   **Ajustes → Buscar actualización**. En **Ajustes → Versión** vas a ver la versión nueva.
+
+Tus datos **no** se pierden al actualizar: viven en el teléfono, no en el código.
 
 ## Estructura del proyecto
 Ver `CLAUDE.md` (resumen técnico) y `prompt-centro-de-mando.md` (especificación completa).
