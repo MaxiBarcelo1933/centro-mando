@@ -224,7 +224,117 @@ export function countPendingToday(today = todayISO()) {
   return getTodayTasks(today).filter((t) => !t.done).length;
 }
 
-// ---------- Seguimientos: consultas (las escrituras llegan en la Fase 4) ----------
+// ---------- Seguimientos: escrituras ----------
+
+function findFollowup(id) {
+  const followup = state.followups.find((f) => f.id === id);
+  if (!followup) throw new Error(`No existe el seguimiento ${id}`);
+  return followup;
+}
+
+async function saveFollowup(followup) {
+  await db.put('followups', followup);
+  const index = state.followups.findIndex((f) => f.id === followup.id);
+  if (index >= 0) state.followups[index] = followup;
+  else state.followups.push(followup);
+  notify();
+  return followup;
+}
+
+export function getFollowup(id) {
+  return state.followups.find((f) => f.id === id) ?? null;
+}
+
+export function addFollowup({ title, area, nextAction = '', dueDate, owner = 'me', waitingFor = '' }) {
+  return saveFollowup({
+    id: newId(),
+    title: title.trim(),
+    area,
+    nextAction: nextAction.trim(),
+    dueDate,
+    owner,
+    waitingFor: owner === 'other' ? waitingFor.trim() : '',
+    status: 'open',
+    history: [],
+    createdAt: new Date().toISOString(),
+    resolvedAt: null,
+  });
+}
+
+export function updateFollowup(id, patch) {
+  const updated = { ...findFollowup(id), ...patch };
+  if (updated.owner !== 'other') updated.waitingFor = '';
+  return saveFollowup(updated);
+}
+
+/** "Registrar avance": anota qué pasó en la bitácora y define la próxima acción y fecha. */
+export function logFollowupProgress(id, { text, nextAction, dueDate }) {
+  const followup = findFollowup(id);
+  return saveFollowup({
+    ...followup,
+    history: [...followup.history, { date: new Date().toISOString(), text: text.trim() }],
+    nextAction: nextAction.trim(),
+    dueDate,
+  });
+}
+
+/** Pospone a una fecha nueva y lo deja anotado en la bitácora. */
+export function postponeFollowup(id, dueDate, note) {
+  const followup = findFollowup(id);
+  return saveFollowup({
+    ...followup,
+    dueDate,
+    history: [...followup.history, { date: new Date().toISOString(), text: note }],
+  });
+}
+
+export function resolveFollowup(id) {
+  return updateFollowup(id, { status: 'resolved', resolvedAt: new Date().toISOString() });
+}
+
+export function reopenFollowup(id) {
+  return updateFollowup(id, { status: 'open', resolvedAt: null });
+}
+
+export async function deleteFollowup(id) {
+  const followup = findFollowup(id);
+  await db.remove('followups', id);
+  state.followups = state.followups.filter((f) => f.id !== id);
+  notify();
+  return followup;
+}
+
+/** Para "Deshacer": vuelve a guardar una copia exacta de cómo estaba. */
+export function restoreFollowup(snapshot) {
+  return saveFollowup(snapshot);
+}
+
+// ---------- Seguimientos: consultas ----------
+
+export const FOLLOWUP_FILTERS = {
+  todos: { label: 'Todos', test: () => true },
+  vencidos: { label: 'Vencidos', test: (f, today) => f.dueDate < today },
+  me: { label: 'Me toca', test: (f) => f.owner === 'me' },
+  esperando: { label: 'Esperando', test: (f) => f.owner === 'other' },
+};
+
+/** Abiertos que cumplen el filtro, ordenados por fecha (los vencidos quedan arriba). */
+export function getOpenFollowups(filter = 'todos', today = todayISO()) {
+  const test = FOLLOWUP_FILTERS[filter]?.test ?? FOLLOWUP_FILTERS.todos.test;
+  return state.followups
+    .filter((f) => f.status === 'open' && test(f, today))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.createdAt.localeCompare(b.createdAt));
+}
+
+export function countFollowupsByFilter(today = todayISO()) {
+  return Object.fromEntries(Object.keys(FOLLOWUP_FILTERS).map((key) => [key, getOpenFollowups(key, today).length]));
+}
+
+export function getResolvedFollowups() {
+  return state.followups
+    .filter((f) => f.status === 'resolved')
+    .sort((a, b) => (b.resolvedAt ?? '').localeCompare(a.resolvedAt ?? ''));
+}
 
 export function isFollowupOverdue(followup, today = todayISO()) {
   return followup.status === 'open' && followup.dueDate < today;
