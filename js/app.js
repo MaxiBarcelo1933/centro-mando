@@ -8,6 +8,7 @@ import { currentTab, setRenderer } from './router.js';
 import { renderHoy } from './views/hoy.js';
 import { renderProcesos } from './views/procesos.js';
 import { renderSeguimientos } from './views/seguimientos.js';
+import { renderAjustes } from './views/ajustes.js';
 import { openQuickCapture } from './views/captura.js';
 import { showToast } from './components/toast.js';
 import { setupInstallBanner } from './components/install-banner.js';
@@ -17,6 +18,7 @@ const VIEWS = {
   hoy: renderHoy,
   procesos: renderProcesos,
   seguimientos: renderSeguimientos,
+  ajustes: renderAjustes,
 };
 
 const viewRoot = document.getElementById('view');
@@ -26,7 +28,10 @@ let renderedTab = null;
 /** Dibuja la sección activa. Se llama en cada cambio de pestaña o de datos. */
 function render() {
   const tab = currentTab();
-  viewRoot.replaceChildren(VIEWS[tab]());
+  const view = VIEWS[tab]();
+  // Al cambiar de pantalla, una entrada suave (no al redibujar la misma).
+  if (tab !== renderedTab && renderedTab !== null) view.classList.add('view-enter');
+  viewRoot.replaceChildren(view);
   for (const button of tabs) {
     if (button.dataset.tab === tab) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');

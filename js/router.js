@@ -1,7 +1,9 @@
-// Navegación entre pestañas. La pestaña activa vive en la dirección (#hoy, #procesos…).
+// Navegación. La pantalla activa vive en la dirección (#hoy, #procesos, #seguimientos, #ajustes).
 // `ui` guarda estado de pantalla que no se guarda en la base (ej. el filtro elegido).
 
 export const TABS = ['hoy', 'procesos', 'seguimientos'];
+// Ajustes no es una pestaña: se abre desde el avatar.
+const ROUTES = [...TABS, 'ajustes'];
 const DEFAULT_TAB = 'hoy';
 
 export const ui = {
@@ -20,7 +22,7 @@ export function requestRender() {
 
 export function currentTab() {
   const tab = location.hash.slice(1);
-  return TABS.includes(tab) ? tab : DEFAULT_TAB;
+  return ROUTES.includes(tab) ? tab : DEFAULT_TAB;
 }
 
 /** navigate('seguimientos', { followupFilter: 'vencidos' }) */
