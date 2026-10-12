@@ -101,7 +101,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 1. Esqueleto PWA (HTML, tokens, tabs, FAB, manifest, íconos, SW, banner de instalación) ✓
 2. DB + Hoy + captura rápida (solo tareas) ✓
 3. Procesos (plantillas, runs, variables, seed, edición, historial) ✓
-4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura)
+4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura) ✓
 5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido)
 6. Publicación (GitHub Pages + prueba en iPhone)
 
@@ -145,7 +145,15 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   - Marcar pasos no tiene "Deshacer" (se desmarca tocando de nuevo); borrar plantilla sí.
   - Editor sobre copia (`structuredClone`); campos de pasos con `autoGrowInput` (textarea que crece).
 
+- Seguimientos:
+  - Filtros en `store.FOLLOWUP_FILTERS` (todos / vencidos / me / esperando); el filtro vive en
+    `ui.followupFilter` (router) para que el tile de Hoy pueda abrir "Vencidos".
+  - Posponer cuenta desde la fecha límite (o desde hoy si ya venció) y deja una línea en la bitácora.
+  - "Deshacer" de resolver/posponer/eliminar = `restoreFollowup(snapshot)` con la copia previa.
+  - Detalle (`views/followup-sheet.js`) se redibuja con `sheet.body.replaceChildren(build())` tras cada acción.
+  - Piezas compartidas en `components/followup-bits.js` (dueDatePicker, ownerPicker, duePill, ownerPill).
+
 ## Estado actual
-Fase 3 hecha (Procesos). Próxima: Fase 4 (Seguimientos).
-Pendiente: "Es un seguimiento" en la captura y detalle desde "Esperando a alguien" (Fase 4);
-Ajustes desde el avatar (Fase 5).
+Fase 4 hecha (Seguimientos). Próxima: Fase 5 (Ajustes y cierre).
+Pendiente: Ajustes desde el avatar, áreas, backup, resumen del día, datos de ejemplo, badge,
+historial de tareas hechas, deslizar tarea (Mañana/Eliminar), pulido.
