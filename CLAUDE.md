@@ -100,7 +100,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 0. Plan (CLAUDE.md, README.md, git) ✓
 1. Esqueleto PWA (HTML, tokens, tabs, FAB, manifest, íconos, SW, banner de instalación) ✓
 2. DB + Hoy + captura rápida (solo tareas) ✓
-3. Procesos (plantillas, runs, variables, seed, edición, historial)
+3. Procesos (plantillas, runs, variables, seed, edición, historial) ✓
 4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura)
 5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido)
 6. Publicación (GitHub Pages + prueba en iPhone)
@@ -135,8 +135,17 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   `await import('./js/store.js')` se usa la misma instancia del store (carga datos y redibuja).
 - Agregar a `tests/smoke.html` pruebas de cada fase nueva.
 
+- Procesos (`js/periods.js` + store):
+  - Mes de referencia = mes en que se TRABAJA el período (período − periodOffset).
+    `{MES_CIERRE}` = mes del período; `{MES_ACTUAL}` = mes de referencia; `{MES_CORTE}` = referencia − 7.
+  - Seed en `js/seed.js` (ids de pasos fijos). Se carga una sola vez (setting `seeded`).
+  - `ensureCurrentRuns()` al iniciar, al guardar plantilla y en `refreshDay()` (visibilitychange/medianoche).
+  - El run se muestra con la plantilla ACTUAL; `checked` por stepId (marcas de pasos borrados quedan
+    guardadas pero no cuentan). `completedAt` se recalcula al marcar y al editar la plantilla.
+  - Marcar pasos no tiene "Deshacer" (se desmarca tocando de nuevo); borrar plantilla sí.
+  - Editor sobre copia (`structuredClone`); campos de pasos con `autoGrowInput` (textarea que crece).
+
 ## Estado actual
-Fase 2 hecha (DB, Hoy, captura rápida). Próxima: Fase 3 (Procesos).
-Pendiente para fases siguientes: "Es un seguimiento" en la captura (Fase 4), detalle de
-seguimiento desde "Esperando a alguien" (Fase 4), Ajustes desde el avatar (Fase 5),
-tile "Cierre de mes" (`store.getClosingProgress`, Fase 3).
+Fase 3 hecha (Procesos). Próxima: Fase 4 (Seguimientos).
+Pendiente: "Es un seguimiento" en la captura y detalle desde "Esperando a alguien" (Fase 4);
+Ajustes desde el avatar (Fase 5).
