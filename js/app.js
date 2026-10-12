@@ -1,5 +1,5 @@
 // Arranque de la app y "router" por pestañas.
-// La pestaña activa se guarda en la dirección (#hoy, #procesos, #seguimientos, #calendario),
+// La pestaña activa se guarda en la dirección (#hoy, #procesos, #proyectos, #seguimientos, #calendario),
 // así el botón "atrás" del navegador funciona en la compu.
 import { el } from './dom.js';
 import * as store from './store.js';
@@ -7,6 +7,7 @@ import { msUntilNextMidnight } from './dates.js';
 import { currentTab, setRenderer } from './router.js';
 import { renderHoy } from './views/hoy.js';
 import { renderProcesos } from './views/procesos.js';
+import { renderProyectos } from './views/proyectos.js';
 import { renderSeguimientos } from './views/seguimientos.js';
 import { renderCalendario } from './views/calendario.js';
 import { renderAjustes } from './views/ajustes.js';
@@ -18,6 +19,7 @@ import { emptyState } from './views/common.js';
 const VIEWS = {
   hoy: renderHoy,
   procesos: renderProcesos,
+  proyectos: renderProyectos,
   seguimientos: renderSeguimientos,
   calendario: renderCalendario,
   ajustes: renderAjustes,

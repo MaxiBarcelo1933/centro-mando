@@ -177,7 +177,7 @@ button {
 .tabbar {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: var(--tabbar);
   border-top: 1px solid var(--line);
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
@@ -2389,4 +2389,399 @@ button.fu-card__main:active {
   margin: 0;
   color: var(--text-muted);
   font-size: 15px;
+}
+
+/* ---------- Proyectos ---------- */
+
+/* Tarjeta de prioridad en Hoy */
+.priority-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 14px 16px 16px;
+  border: 1px solid rgba(245, 165, 36, 0.35);
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, rgba(245, 165, 36, 0.10), rgba(245, 165, 36, 0.03)), var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition: transform 120ms ease;
+}
+
+.priority-card:active {
+  transform: scale(0.98);
+}
+
+.priority-card__overline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+
+.priority-card__overline svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.priority-card__main {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.priority-card__main strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.priority-card__next {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.priority-card__next.is-overdue {
+  color: var(--danger);
+}
+
+/* Pantalla del proyecto */
+.project-name {
+  margin: -6px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kpi-card__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.kpi-card__big {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-card__of {
+  font-size: 24px;
+  color: var(--text-muted);
+}
+
+.kpi-card__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.kpi-card__sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.kpi-card__sub strong {
+  color: var(--text);
+}
+
+.money-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.money-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.money-row.is-total {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.money-row__label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.money-row__values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.money-row__usd {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.money-row.is-total .money-row__usd {
+  color: var(--accent-text);
+}
+
+.money-row__uyu {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.money-card__rate {
+  margin-top: -4px;
+}
+
+/* Estados de los PDV */
+.status-pill {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.status-pill--pendiente {
+  color: var(--accent-text);
+  background: rgba(245, 165, 36, 0.16);
+}
+
+.status-pill--relevado {
+  color: var(--area-ventas);
+  background: var(--area-ventas-bg);
+}
+
+.status-pill--cambio {
+  color: var(--danger);
+  background: rgba(255, 122, 110, 0.16);
+}
+
+.status-pill--instalado {
+  color: var(--area-pdv);
+  background: var(--area-pdv-bg);
+}
+
+.status-pill--reemplazado {
+  color: var(--text-muted);
+  background: var(--area-otros-bg);
+  text-decoration: line-through;
+}
+
+/* Fila de PDV */
+.pdv-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.pdv-groups > .hint {
+  margin: 0;
+}
+
+.card--list li + li .pdv-row {
+  border-top: 1px solid var(--line);
+}
+
+.pdv-row {
+  width: 100%;
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+
+.pdv-row:active {
+  background: var(--surface-2);
+}
+
+.pdv-row__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.pdv-row__code {
+  flex: none;
+  min-width: 38px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdv-row__client {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.pdv-row__alert {
+  flex: none;
+  color: var(--accent);
+}
+
+.pdv-row__alert svg {
+  width: 18px;
+  height: 18px;
+}
+
+.pdv-row__meta {
+  padding-left: 46px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.pdv-row__next {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding-left: 46px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.pdv-row__next svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--text-muted);
+}
+
+.pdv-row__next.is-overdue,
+.pdv-row__next.is-overdue svg {
+  color: var(--danger);
+}
+
+/* Ficha del PDV */
+.pdv-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pdv-summary__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pdv-summary__client {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.pdv-summary__codes,
+.pdv-summary__facts {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.pdv-summary__codes strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pdv-summary__notes {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--note);
+}
+
+.review-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid rgba(245, 165, 36, 0.35);
+  border-radius: var(--radius-card);
+  background: rgba(245, 165, 36, 0.08);
+}
+
+.review-box__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-text);
+}
+
+.review-box__title svg {
+  width: 18px;
+  height: 18px;
+}
+
+.review-box__list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.next-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid transparent;
+}
+
+.next-card.is-overdue {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.next-card__label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.next-card__action {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.next-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 0;
 }

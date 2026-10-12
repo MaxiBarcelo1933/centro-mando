@@ -440,7 +440,7 @@
 
     // Backup: exportar, validar e importar
     const backup = await appStore.exportBackup();
-    check('Exportar: formato con versión de esquema', backup.app === 'centro-mando' && backup.schemaVersion === 1 && Array.isArray(backup.data.tasks) && backup.data.tasks.length === appStore.getTodayTasks().length + appStore.getWeekTasks().length + appStore.getSomedayTasks().length + 1);
+    check('Exportar: formato con versión de esquema', backup.app === 'centro-mando' && backup.schemaVersion === 2 && Array.isArray(backup.data.pdvs) && Array.isArray(backup.data.tasks) && backup.data.tasks.length === appStore.getTodayTasks().length + appStore.getWeekTasks().length + appStore.getSomedayTasks().length + 1);
     check('Importar: rechaza un archivo que no es JSON', Boolean(appStore.parseBackup('{roto').error));
     check('Importar: rechaza otro tipo de archivo', Boolean(appStore.parseBackup(JSON.stringify({ app: 'otra' })).error));
     check('Importar: rechaza datos dañados', Boolean(appStore.parseBackup(JSON.stringify({ ...backup, data: { ...backup.data, tasks: [{ id: 1 }] } })).error));
@@ -616,6 +616,77 @@
     check('Ajustes: lista de lo importado', [...pd.querySelectorAll('.sheet .history-row__title')].some((n) => n.textContent === 'Seed: tarea nueva v2'));
     pd.querySelector('.sheet__cancel').click();
     await closed();
+
+    // ---------- Proyecto (PDV) ----------
+    const { formatNumber, parseDecimal } = await import('../js/views/common.js');
+    check('Formato uruguayo de números', formatNumber(11050.23) === '11.050,23' && formatNumber(447534.3, 0) === '447.534' && formatNumber(93) === '93,00');
+    check('Leer números escritos a mano', parseDecimal('40,50') === 40.5 && parseDecimal('40.5') === 40.5 && parseDecimal('1.725,00') === 1725 && Number.isNaN(parseDecimal('abc')));
+    check('Código nuevo del PDV', appStore.newPdvCode('2195') === 'E0002195' && appStore.newPdvCode('21') === 'E0000021');
+
+    const projSeed = (pdv, extra = {}) => ({
+      app: 'centro-mando-trabajo',
+      seedVersion: 3,
+      projects: [{
+        seedId: 'test-proj', nombre: 'Proyecto de prueba', prioridad: 1, meta: 3, cotizacionUSD: 40.5, responsable: 'Yo',
+        pdv,
+        datosARevisar: [{ codigo: '10', motivo: 'Revisar el giro' }],
+        ...extra,
+      }],
+    });
+    const testPdvs = [
+      { codigo: '10', cliente: 'CLIENTE A', departamento: 'Maldonado', estado: 'PENDIENTE', proveedor: 'GYS', cotizacionUSD: 100.5, proximaAccion: 'Instalar', fechaProxima: dates.addDays(dates.todayISO(), 1), esperandoA: 'proveedor', etapa: 'instalacion_agendada' },
+      { codigo: '20', cliente: 'CLIENTE B', departamento: 'Colonia', estado: 'INSTALADO', proveedor: 'PIXELART', cotizacionUSD: 200.25, etapa: 'instalado' },
+      { codigo: '30', cliente: 'CLIENTE C', departamento: 'Colonia', estado: 'CAMBIO', proveedor: 'GYS', cotizacionUSD: 50, proximaAccion: 'Conseguir reemplazo', fechaProxima: null, esperandoA: 'yo', etapa: null },
+    ];
+    check('Proyecto: frena si los PDV no dan la meta', Boolean(workSeed.parseWorkSeed(JSON.stringify(projSeed(testPdvs.slice(0, 2)))).error));
+    check('Proyecto: frena con un código repetido', Boolean(workSeed.parseWorkSeed(JSON.stringify(projSeed([testPdvs[0], testPdvs[1], { ...testPdvs[2], codigo: '10' }]))).error));
+    check('Proyecto: frena con un estado inválido', Boolean(workSeed.parseWorkSeed(JSON.stringify(projSeed([testPdvs[0], testPdvs[1], { ...testPdvs[2], estado: 'LISTO' }]))).error));
+    const addedProj = await workSeed.importWorkSeed(projSeed(testPdvs));
+    check('Proyecto: se importa con sus PDV', addedProj.projects === 1 && addedProj.pdvs === 3);
+    const againProj = await workSeed.importWorkSeed(projSeed(testPdvs));
+    check('Proyecto: reimportar no duplica PDV', againProj.pdvs === 0 && appStore.getProjectPdvs('test-proj').length === 3);
+    const stats = appStore.getProjectStats('test-proj');
+    check('Proyecto: números (instalados, faltan, inversión)', stats.installed === 1 && stats.missing === 2 && stats.byStatus.CAMBIO === 1 && stats.installedUSD === 200.25 && stats.pendingUSD === 150.5 && stats.totalUSD === 350.75 && stats.percent === 33);
+    const pdvA = appStore.getPdv('test-proj:10');
+    check('Proyecto: etapas cargadas hasta la indicada', pdvA.stages.relevado && pdvA.stages.instalacion_agendada && !pdvA.stages.instalado);
+    check('Proyecto: datos a revisar en su PDV', pdvA.review.length === 1 && appStore.getPdv('test-proj:20').review.length === 0);
+    check('Proyecto: lo próximo es mañana', appStore.getProjectNext('test-proj')?.pdvs[0]?.code === '10');
+
+    await appStore.togglePdvStage('test-proj:10', 'instalado');
+    const installedA = appStore.getPdv('test-proj:10');
+    check('Proyecto: marcar la etapa "Instalado" pasa el estado a Instalado', installedA.status === 'INSTALADO' && installedA.history.some((h) => h.text.includes('Instalado')));
+    check('Proyecto: el avance se recalcula', appStore.getProjectStats('test-proj').installed === 2);
+    await appStore.restorePdv(pdvA);
+    await appStore.logPdvProgress('test-proj:30', { text: 'Hablé con el cliente', nextAction: 'Buscar reemplazo en Colonia', nextDate: dates.todayISO(), waitingFor: 'yo' });
+    check('Proyecto: registrar avance', appStore.getPdv('test-proj:30').history.at(-1).text === 'Hablé con el cliente' && appStore.getPdv('test-proj:30').nextAction === 'Buscar reemplazo en Colonia');
+    await appStore.clearPdvReview('test-proj:10');
+    check('Proyecto: "Ya lo revisé" saca el aviso', appStore.getPdv('test-proj:10').review.length === 0);
+
+    // Copia de seguridad: incluye proyectos y una copia vieja (v1) se sigue pudiendo leer.
+    const backupV2 = await appStore.exportBackup();
+    check('Backup: incluye proyectos y PDV', backupV2.data.projects.length >= 1 && backupV2.data.pdvs.length >= 3);
+    const { projects: _p, pdvs: _d, ...oldData } = backupV2.data;
+    check('Backup: una copia v1 (sin proyectos) se puede importar', !appStore.parseBackup(JSON.stringify({ ...backupV2, schemaVersion: 1, data: oldData })).error);
+
+    // Pantalla
+    pw.location.hash = 'proyectos';
+    await waitFor(() => p$('.kpi-card'));
+    check('Pestaña Proyectos con números', p$('.tab[data-tab="proyectos"]')?.getAttribute('aria-current') === 'page' && p$('.kpi-card__big')?.textContent.startsWith('1'));
+    check('Proyectos: por defecto solo los que faltan', p$$('.pdv-row').length === 2 && !p$$('.pdv-row__code').some((c) => c.textContent === '20'));
+    p$$('.chip').find((c) => c.textContent.startsWith('Por departamento')).click();
+    await waitFor(() => p$('.pdv-groups'));
+    check('Proyectos: agrupado por departamento', p$$('.pdv-groups .group-title').map((t) => t.textContent).join(',') === 'Colonia,Maldonado');
+    p$$('.pdv-row').find((r) => r.textContent.includes('CLIENTE C')).click();
+    await waitFor(() => pd.querySelector('.sheet .pdv-summary'));
+    check('Ficha del PDV con los dos códigos', pd.querySelector('.sheet .pdv-summary__codes')?.textContent.includes('E0000030'));
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'Relevado').click();
+    await waitFor(() => appStore.getPdv('test-proj:30').status === 'RELEVADO');
+    check('Ficha: cambiar el estado lo anota en la bitácora', appStore.getPdv('test-proj:30').history.at(-1).text === 'Estado: Cambio → Relevado');
+    pd.querySelector('.sheet__cancel').click();
+    await closed();
+    pw.location.hash = 'hoy';
+    await waitFor(() => p$('.priority-card'));
+    check('Hoy: tarjeta de prioridad', p$('.priority-card__main')?.textContent.startsWith('1 de 3 instalados'));
 
     check('Sin errores en la consola', consoleErrors.length === 0, consoleErrors.join(' | '));
 

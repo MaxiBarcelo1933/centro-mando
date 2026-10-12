@@ -46,6 +46,7 @@ export function renderHoy() {
 
   const view = el('section', { class: 'view', 'aria-labelledby': 'view-title' },
     viewHeader({ overline: formatLongDate(today), title: 'Hoy', trailing: avatar }),
+    priorityCard(today),
     summaryTiles(today),
     el('section', { class: 'section' },
       el('div', { class: 'section-head' },
@@ -61,6 +62,43 @@ export function renderHoy() {
     foldSection('someday', 'Algún día', store.getSomedayTasks(today), today),
   );
   return view;
+}
+
+// ---------- Tarjeta del proyecto prioritario ----------
+
+function priorityCard(today) {
+  const project = store.getPriorityProject();
+  if (!project) return null;
+  const stats = store.getProjectStats(project.id);
+  const next = store.getProjectNext(project.id, today);
+  const bar = el('span', { class: 'progress__bar' });
+  bar.style.width = `${Math.min(100, stats.percent)}%`;
+
+  // "Próximo: Instalar · Maldonado y Canelones · Mañana"
+  let nextLine = null;
+  if (next) {
+    const actions = [...new Set(next.pdvs.map((p) => p.nextAction).filter(Boolean))];
+    const what = actions.length === 1 ? actions[0] : `${next.pdvs.length} acciones`;
+    const places = joinWithY([...new Set(next.pdvs.map((p) => p.department).filter(Boolean))]);
+    const text = [what, places, relativeDayLabel(next.date, today)].filter(Boolean).join(' · ');
+    nextLine = el('span', { class: next.overdue ? 'priority-card__next is-overdue' : 'priority-card__next' },
+      `${next.overdue ? 'Atrasado' : 'Próximo'}: ${text}`);
+  }
+
+  return el('button', { class: 'priority-card', type: 'button', onclick: () => navigate('proyectos') },
+    el('span', { class: 'priority-card__overline' }, icon('flag', 2), `Prioridad #${project.priority} · ${project.name}`),
+    el('span', { class: 'priority-card__main' },
+      el('strong', {}, `${stats.installed} de ${stats.goal} instalados (${stats.percent}%)`),
+      ` · faltan ${stats.missing}`),
+    el('span', { class: 'progress progress--lg', 'aria-hidden': 'true' }, bar),
+    nextLine,
+  );
+}
+
+/** ['A', 'B', 'C'] → "A, B y C" */
+function joinWithY(items) {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} y ${items.at(-1)}`;
 }
 
 // ---------- Tiles de resumen ----------
