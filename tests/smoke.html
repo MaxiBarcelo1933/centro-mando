@@ -197,6 +197,12 @@
     // ---------- Procesos ----------
     const pw = frame.contentWindow;
     const pd = pw.document;
+    // Vigilamos errores en la consola de la app durante el resto de las pruebas.
+    const consoleErrors = [];
+    pw.addEventListener('error', (e) => consoleErrors.push(e.message));
+    pw.addEventListener('unhandledrejection', (e) => consoleErrors.push(String(e.reason)));
+    const originalError = pw.console.error;
+    pw.console.error = (...args) => { consoleErrors.push(args.join(' ')); originalError.apply(pw.console, args); };
     const p$ = (sel) => pd.querySelector(sel);
     const p$$ = (sel) => [...pd.querySelectorAll(sel)];
     check('Tile "Cierre de mes" arranca en 0/9', p$$('.tile__value')[2]?.textContent === '0/9', p$$('.tile__value')[2]?.textContent);
@@ -369,6 +375,116 @@
     lastToastAction().click();
     await waitFor(() => cardOf('Cotización vinilo · Florida'));
     check('Deshacer eliminar seguimiento', Boolean(cardOf('Cotización vinilo · Florida')));
+    await sleep(300);
+
+    // ---------- Fase 5: Ajustes ----------
+    // Usamos el MISMO store que la app (mismo módulo, misma URL) para revisar datos.
+    const bridge = pd.createElement('script');
+    bridge.type = 'module';
+    bridge.textContent = "import * as s from './js/store.js'; window.__store = s;";
+    pd.head.append(bridge);
+    const appStore = await waitFor(() => pw.__store);
+    const settingsButton = (text) => p$$('.view .btn-secondary').find((b) => b.textContent.includes(text));
+
+    pw.location.hash = 'hoy';
+    await waitFor(() => p$('.avatar'));
+    p$('.avatar').click();
+    await waitFor(() => p$('.title')?.textContent === 'Ajustes');
+    check('El avatar abre Ajustes', p$('.title')?.textContent === 'Ajustes');
+    check('En Ajustes ninguna pestaña queda activa', !p$('.tab[aria-current]'));
+    check('Aviso de backup (nunca se hizo)', p$('.backup-status.is-warning')?.textContent.startsWith('Todavía no hiciste ningún backup'));
+
+    // Áreas: renombrar, agregar y ocultar
+    p$$('.settings-row').find((r) => r.textContent.includes('PDV')).click();
+    await waitFor(() => pd.querySelector('.sheet .swatch'));
+    const areaName = pd.querySelector('.sheet .field__input--big');
+    areaName.value = 'Puntos de venta';
+    areaName.dispatchEvent(new pw.Event('input', { bubbles: true }));
+    pd.querySelectorAll('.sheet .swatch')[5].click(); // Coral
+    check('Vista previa de la etiqueta', pd.querySelector('.sheet .area-preview .tag')?.textContent === 'Puntos de venta');
+    pd.querySelector('.sheet .btn-primary').click();
+    await waitFor(() => p$$('.settings-row').some((r) => r.textContent.includes('Puntos de venta')));
+    check('Renombrar área', appStore.getArea('pdv').name === 'Puntos de venta' && appStore.getArea('pdv').color === '#FF9F8A');
+    await closed();
+    p$$('.btn-add').find((b) => b.textContent.includes('Agregar área')).click();
+    await waitFor(() => pd.querySelector('.sheet .swatch'));
+    const newArea = pd.querySelector('.sheet .field__input--big');
+    newArea.value = 'Capacitaciones';
+    newArea.dispatchEvent(new pw.Event('input', { bubbles: true }));
+    pd.querySelector('.sheet .btn-primary').click();
+    await waitFor(() => p$$('.settings-row').some((r) => r.textContent.includes('Capacitaciones')));
+    check('Agregar área', p$$('.settings-row').some((r) => r.textContent.includes('Capacitaciones')));
+    await closed();
+    p$$('.settings-row').find((r) => r.textContent.includes('Capacitaciones')).click();
+    await waitFor(() => pd.querySelector('.sheet .chip'));
+    [...pd.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'Oculta').click();
+    pd.querySelector('.sheet .btn-primary').click();
+    await waitFor(() => p$$('.settings-row').find((r) => r.textContent.includes('Capacitaciones'))?.textContent.includes('Oculta'));
+    await closed();
+    p$('#fab').click();
+    await waitFor(() => pd.querySelector('.sheet .chip'));
+    const captureChips = [...pd.querySelectorAll('.sheet .chip')].map((c) => c.textContent);
+    check('Área oculta no aparece al cargar', !captureChips.includes('Capacitaciones') && captureChips.includes('Puntos de venta'));
+    pd.querySelector('.sheet__cancel').click();
+    await closed();
+
+    // Backup: exportar, validar e importar
+    const backup = await appStore.exportBackup();
+    check('Exportar: formato con versión de esquema', backup.app === 'centro-mando' && backup.schemaVersion === 1 && Array.isArray(backup.data.tasks) && backup.data.tasks.length === appStore.getTodayTasks().length + appStore.getWeekTasks().length + appStore.getSomedayTasks().length + 1);
+    check('Importar: rechaza un archivo que no es JSON', Boolean(appStore.parseBackup('{roto').error));
+    check('Importar: rechaza otro tipo de archivo', Boolean(appStore.parseBackup(JSON.stringify({ app: 'otra' })).error));
+    check('Importar: rechaza datos dañados', Boolean(appStore.parseBackup(JSON.stringify({ ...backup, data: { ...backup.data, tasks: [{ id: 1 }] } })).error));
+    check('Importar: rechaza versión más nueva', Boolean(appStore.parseBackup(JSON.stringify({ ...backup, schemaVersion: 99 })).error));
+    const parsed = appStore.parseBackup(JSON.stringify(backup));
+    check('Importar: vista previa con cantidades', !parsed.error && parsed.counts.followups === backup.data.followups.length && parsed.counts.templates === 2);
+    const victim = appStore.getTodayTasks().find((t) => t.title === 'Tarea atrasada');
+    await appStore.deleteTask(victim.id);
+    await appStore.importBackup(parsed.backup);
+    check('Importar reemplaza y recupera los datos', appStore.getTodayTasks().some((t) => t.title === 'Tarea atrasada'));
+
+    // Resumen del día
+    const summary = appStore.buildDaySummary();
+    check('Resumen del día', summary.startsWith('Resumen del ') && summary.includes('Pendiente (') && summary.includes('Seguimientos vencidos (1)') && summary.includes('Cartel gomería · San José'), summary);
+
+    // Tareas hechas
+    pw.location.hash = 'hoy';
+    await waitFor(() => p$('.avatar'));
+    p$('.avatar').click();
+    await waitFor(() => p$('.title')?.textContent === 'Ajustes');
+    settingsButton('Ver tareas hechas').click();
+    await waitFor(() => pd.querySelector('.sheet .history-row'));
+    check('Historial de tareas hechas (incluye las de otros días)', [...pd.querySelectorAll('.sheet .history-row__title')].some((n) => n.textContent === 'Hecha ayer'));
+    pd.querySelector('.sheet__cancel').click();
+    await closed();
+
+    // Datos de ejemplo
+    settingsButton('Cargar datos de ejemplo').click();
+    await waitFor(() => appStore.hasSampleData());
+    check('Cargar datos de ejemplo (4 tareas + 5 seguimientos)', appStore.getTodayTasks().filter((t) => t.sample).length === 4 && appStore.getOpenFollowups().filter((f) => f.sample).length === 5);
+    await waitFor(() => settingsButton('Borrar datos de ejemplo') && !settingsButton('Borrar datos de ejemplo').disabled);
+    settingsButton('Borrar datos de ejemplo').click();
+    await waitFor(() => !appStore.hasSampleData());
+    check('Borrar datos de ejemplo sin tocar lo propio', !appStore.hasSampleData() && appStore.getTodayTasks().some((t) => t.title === 'Tarea atrasada'));
+
+    // Deslizar una tarea: "Mañana"
+    pw.location.hash = 'hoy';
+    const rowNow = (title) => p$$('.task-row').find((r) => r.querySelector('.task-row__title').textContent === title);
+    await waitFor(() => rowNow('Tarea atrasada'));
+    const swipeRow = rowNow('Tarea atrasada');
+    const swipeContent = swipeRow.querySelector('.task-row__content');
+    const pointer = (type, x) => swipeContent.dispatchEvent(new pw.PointerEvent(type, { bubbles: true, clientX: x, clientY: 100, pointerId: 7, pointerType: 'touch', isPrimary: true }));
+    pointer('pointerdown', 300);
+    pointer('pointermove', 280);
+    pointer('pointermove', 200);
+    pointer('pointermove', 120);
+    pointer('pointerup', 120);
+    check('Deslizar a la izquierda muestra las acciones', swipeRow.classList.contains('is-swiped') && swipeRow.querySelector('.task-row__actions').getAttribute('aria-hidden') === 'false');
+    swipeRow.querySelector('.swipe-action--later').click();
+    await waitFor(() => p$$('.fold .task-row__title').some((n) => n.textContent === 'Tarea atrasada'));
+    const tomorrowRow = p$$('.fold .task-row').find((r) => r.textContent.includes('Tarea atrasada'));
+    check('"Mañana" la pasa a mañana', Boolean(tomorrowRow) && tomorrowRow.textContent.includes('Mañana'));
+
+    check('Sin errores en la consola', consoleErrors.length === 0, consoleErrors.join(' | '));
 
     report(failures === 0 ? 'TODO OK' : `${failures} FALLAS`);
   </script>
