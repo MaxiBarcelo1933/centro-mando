@@ -3,10 +3,12 @@
 import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import * as store from '../store.js';
-import { todayISO, formatLongDate, relativeDayLabel, overdueSinceLabel } from '../dates.js';
+import { todayISO, addDays, formatLongDate, relativeDayLabel, overdueSinceLabel } from '../dates.js';
 import { navigate } from '../router.js';
 import { showToast, tryAction } from '../components/toast.js';
 import { areaTag } from '../components/form.js';
+import { enableSwipe } from '../components/swipe.js';
+import { duePill } from '../components/followup-bits.js';
 import { viewHeader, emptyState } from './common.js';
 import { openTaskEditor } from './task-sheet.js';
 import { showClosingTemplate } from './procesos.js';
@@ -39,7 +41,7 @@ export function renderHoy() {
     class: 'avatar',
     type: 'button',
     'aria-label': 'Abrir ajustes',
-    onclick: () => showToast('Los ajustes llegan en la Fase 5'),
+    onclick: () => navigate('ajustes'),
   }, 'MB');
 
   const view = el('section', { class: 'view', 'aria-labelledby': 'view-title' },
@@ -144,7 +146,44 @@ function taskRow(task, today, { showMoveToToday = false } = {}) {
     }, 'Pasar a hoy')
     : null;
 
-  return el('li', { class: classes.join(' ') }, check, main, moveButton);
+  // Deslizar a la izquierda: "Mañana" (si no está hecha) y "Eliminar".
+  const actions = el('div', { class: 'task-row__actions' },
+    task.done ? null : el('button', {
+      class: 'swipe-action swipe-action--later',
+      type: 'button',
+      onclick: () => moveToTomorrow(task),
+    }, 'Mañana'),
+    el('button', {
+      class: 'swipe-action swipe-action--delete',
+      type: 'button',
+      onclick: () => deleteTask(task),
+    }, 'Eliminar'),
+  );
+  const content = el('div', { class: 'task-row__content' }, check, main, moveButton);
+  const row = el('li', { class: classes.join(' ') }, actions, content);
+  enableSwipe(row, content, actions, task.done ? SWIPE_ACTION_WIDTH : SWIPE_ACTION_WIDTH * 2);
+  return row;
+}
+
+const SWIPE_ACTION_WIDTH = 84;
+
+async function moveToTomorrow(task) {
+  const previous = { bucket: task.bucket, dueDate: task.dueDate };
+  const saved = await tryAction(() => store.updateTask(task.id, { bucket: 'hoy', dueDate: addDays(todayISO(), 1) }));
+  if (!saved) return;
+  showToast('Pasada a mañana', {
+    actionLabel: 'Deshacer',
+    onAction: () => tryAction(() => store.updateTask(task.id, previous)),
+  });
+}
+
+async function deleteTask(task) {
+  const removed = await tryAction(() => store.deleteTask(task.id));
+  if (!removed) return;
+  showToast('Tarea eliminada', {
+    actionLabel: 'Deshacer',
+    onAction: () => tryAction(() => store.restoreTask(removed)),
+  });
 }
 
 async function toggleTask(task) {
@@ -178,8 +217,6 @@ function waitingSection(today) {
   return el('section', { class: 'section' },
     el('div', { class: 'section-head' }, el('h2', { class: 'section-title' }, 'Esperando a alguien')),
     el('ul', { class: 'card card--list list' }, items.map((f) => {
-      const overdue = store.isFollowupOverdue(f, today);
-      const dateClass = overdue ? 'date-pill date-pill--danger' : (f.dueDate === today ? 'date-pill date-pill--today' : 'date-pill');
       return el('li', {},
         el('button', {
           class: 'followup-row',
@@ -190,7 +227,7 @@ function waitingSection(today) {
             el('span', { class: 'followup-row__title' }, f.title),
             el('span', { class: 'followup-row__sub' }, f.nextAction),
           ),
-          el('span', { class: dateClass }, relativeDayLabel(f.dueDate, today)),
+          duePill(f, today),
         ),
       );
     })),

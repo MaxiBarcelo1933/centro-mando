@@ -490,6 +490,7 @@ button.tile:active {
 
 .card--list {
   padding: 4px 0;
+  overflow: hidden; /* las filas tienen fondo propio: respetamos las esquinas redondeadas */
 }
 
 .list {
@@ -503,12 +504,46 @@ button.tile:active {
 
 /* ---------- Fila de tarea ---------- */
 
+/* La fila tiene dos capas: atrás las acciones de deslizar, adelante el contenido. */
 .task-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.task-row__content {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 4px;
   min-height: 60px;
   padding: 4px 12px 4px 6px;
+  background: var(--surface);
+  touch-action: pan-y; /* el scroll vertical lo maneja el navegador; el horizontal, nosotros */
+  transition: transform 220ms var(--ease-out);
+}
+
+.task-row__actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  display: flex;
+}
+
+.swipe-action {
+  width: 84px;
+  border: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.swipe-action--later {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.swipe-action--delete {
+  background: var(--badge-bg);
+  color: var(--badge-text);
 }
 
 .task-row.is-new {
@@ -1566,6 +1601,228 @@ button.fu-card__main:active {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* ---------- Ajustes ---------- */
+
+.view-header--back {
+  align-items: flex-start;
+}
+
+.back-btn {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -10px;
+  padding: 0 10px 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.back-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.back-btn:active {
+  opacity: 0.7;
+}
+
+.settings-row {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 8px 16px;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.settings-row:active {
+  opacity: 0.7;
+}
+
+.settings-row__label {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.settings-row__value {
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-row__chevron {
+  display: grid;
+  color: var(--text-muted);
+}
+
+.settings-row__chevron svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--tap);
+}
+
+.area-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.button-row .btn-secondary {
+  flex: 1 1 180px;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.backup-status {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.backup-status.is-warning {
+  color: var(--accent-text);
+}
+
+.import-summary__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.import-summary {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.done-day::first-letter {
+  text-transform: uppercase;
+}
+
+/* Muestras de color */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.swatch {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: none;
+}
+
+.swatch .area-dot {
+  width: 26px;
+  height: 26px;
+}
+
+.swatch[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.area-preview {
+  padding: 4px 0;
+}
+
+/* Interruptor (badge del ícono) */
+.switch-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.switch-row__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.switch {
+  flex: none;
+  position: relative;
+  width: 51px;
+  height: 31px;
+  border-radius: 16px;
+  background: var(--line-strong);
+  transition: background 200ms ease;
+}
+
+.switch__knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 200ms var(--ease-out);
+}
+
+.switch-row[aria-checked="true"] .switch {
+  background: var(--accent);
+}
+
+.switch-row[aria-checked="true"] .switch__knob {
+  transform: translateX(20px);
+}
+
+/* Entrada suave al cambiar de pantalla */
+.view-enter {
+  animation: view-in 200ms var(--ease-out);
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
 }
 
 /* ---------- Movimiento reducido ---------- */
