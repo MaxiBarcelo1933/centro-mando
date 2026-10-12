@@ -469,8 +469,9 @@
 
     // Datos de ejemplo
     settingsButton('Cargar datos de ejemplo').click();
-    await waitFor(() => appStore.hasSampleData());
-    check('Cargar datos de ejemplo (4 tareas + 5 seguimientos)', appStore.getTodayTasks().filter((t) => t.sample).length === 4 && appStore.getOpenFollowups().filter((f) => f.sample).length === 5);
+    const sampleLoaded = () => appStore.getTodayTasks().filter((t) => t.sample).length === 4 && appStore.getOpenFollowups().filter((f) => f.sample).length === 5;
+    await waitFor(sampleLoaded);
+    check('Cargar datos de ejemplo (4 tareas + 5 seguimientos)', sampleLoaded());
     await waitFor(() => settingsButton('Borrar datos de ejemplo') && !settingsButton('Borrar datos de ejemplo').disabled);
     settingsButton('Borrar datos de ejemplo').click();
     await waitFor(() => !appStore.hasSampleData());
@@ -553,6 +554,68 @@
     tomorrowCell?.click();
     await waitFor(() => p$$('.cal-row__title').some((t) => t.textContent === 'Cal: reunión'));
     check('Calendario: tocar un día muestra su lista', p$$('.cal-row__title').some((t) => t.textContent === 'Cal: reunión'));
+
+    // ---------- Datos de trabajo (importación idempotente) ----------
+    check('Próximo hábil: lunes → martes', dates.nextBusinessDay('2026-10-12') === '2026-10-13');
+    check('Próximo hábil: viernes → lunes', dates.nextBusinessDay('2026-10-16') === '2026-10-19');
+    check('Próximo hábil: saltea feriados', dates.nextBusinessDay('2026-12-24', ['2026-12-25']) === '2026-12-28');
+
+    const seedBridge = pd.createElement('script');
+    seedBridge.type = 'module';
+    seedBridge.textContent = "import * as w from './js/work-seed.js'; window.__workSeed = w;";
+    pd.head.append(seedBridge);
+    const workSeed = await waitFor(() => pw.__workSeed);
+    const seedV1 = {
+      app: 'centro-mando-trabajo',
+      seedVersion: 1,
+      areas: [{ seedId: 'test-area', id: 'prueba-area', name: 'Área de prueba', color: 'Lima' }],
+      tasks: [
+        { seedId: 'test-t1', title: 'Seed: tarea sin fecha', area: 'prueba-area', bucket: 'semana', notes: 'nota' },
+        { seedId: 'test-t2', title: 'Seed: tarea con fecha', area: 'ventas', dueDate: dates.addDays(dates.todayISO(), 2), pdvCodes: ['2195'] },
+      ],
+      followups: [{ seedId: 'test-f1', title: 'Seed: seguimiento', area: 'otros', nextAction: 'Llamar', dueDate: 'proximo_habil' }],
+    };
+    check('Seed: rechaza otro tipo de archivo', Boolean(workSeed.parseWorkSeed(JSON.stringify({ app: 'otra', seedVersion: 1 })).error));
+    check('Seed: rechaza seedId repetido', Boolean(workSeed.parseWorkSeed(JSON.stringify({ ...seedV1, followups: [{ ...seedV1.followups[0], seedId: 'test-t1' }] })).error));
+    check('Seed: rechaza un área que no existe', Boolean(workSeed.parseWorkSeed(JSON.stringify({ ...seedV1, areas: [] })).error));
+    const preview1 = workSeed.parseWorkSeed(JSON.stringify(seedV1));
+    check('Seed: vista previa (1 área, 2 tareas, 1 seguimiento)', !preview1.error && preview1.pending.areas.length === 1 && preview1.pending.tasks.length === 2 && preview1.pending.followups.length === 1);
+
+    const seedTasks = () => [...appStore.getTodayTasks(), ...appStore.getWeekTasks(), ...appStore.getSomedayTasks()].filter((t) => t.seedId?.startsWith('test-'));
+    const added1 = await workSeed.importWorkSeed(seedV1);
+    check('Seed: primera importación agrega todo', added1.areas === 1 && added1.tasks === 2 && added1.followups === 1 && seedTasks().length === 2);
+    check('Seed: área nueva con su color', appStore.getArea('prueba-area').name === 'Área de prueba' && appStore.getArea('prueba-area').color === '#C5E478');
+    const seededFollowup = appStore.getOpenFollowups().find((f) => f.seedId === 'test-f1');
+    check('Seed: "proximo_habil" se calcula al importar', seededFollowup?.dueDate === dates.nextBusinessDay(dates.todayISO(), appStore.getSetting('holidays')));
+    const datedTask = seedTasks().find((t) => t.seedId === 'test-t2');
+    check('Seed: tarea con fecha futura va a Esta semana y guarda los PDV', datedTask?.bucket === 'semana' && datedTask?.pdvCodes?.[0] === '2195');
+
+    const added2 = await workSeed.importWorkSeed(seedV1);
+    check('Seed: reimportar no duplica', added2.tasks === 0 && added2.followups === 0 && added2.areas === 0 && seedTasks().length === 2);
+
+    // Cambios míos: completo una y borro otra. Una versión nueva solo agrega lo nuevo.
+    const doneOne = seedTasks().find((t) => t.seedId === 'test-t1');
+    await appStore.setTaskDone(doneOne.id, true);
+    await appStore.updateArea('prueba-area', { name: 'Renombrada' });
+    await appStore.deleteTask(datedTask.id);
+    const seedV2 = { ...seedV1, seedVersion: 2, tasks: [...seedV1.tasks, { seedId: 'test-t3', title: 'Seed: tarea nueva v2', area: 'otros', bucket: 'algun_dia' }] };
+    const added3 = await workSeed.importWorkSeed(seedV2);
+    check('Seed: versión nueva agrega solo lo nuevo', added3.tasks === 1 && seedTasks().some((t) => t.seedId === 'test-t3'));
+    check('Seed: no pisa lo que cambié (hecha y área renombrada)', appStore.getTask(doneOne.id)?.done === true && appStore.getArea('prueba-area').name === 'Renombrada');
+    check('Seed: lo que borré no vuelve', !seedTasks().some((t) => t.seedId === 'test-t2'));
+    const importedNow = workSeed.importedSummary();
+    check('Seed: "Ver qué se importó" con versión y borradas', importedNow.version === 2 && importedNow.groups.find((g) => g.kind === 'tasks').items.some((i) => i.seedId === 'test-t2' && i.gone));
+
+    pw.location.hash = 'hoy';
+    await waitFor(() => p$('.avatar'));
+    p$('.avatar').click();
+    await waitFor(() => p$('.title')?.textContent === 'Ajustes');
+    check('Ajustes: botones de datos de trabajo', Boolean(settingsButton('Reimportar datos de trabajo')) && !settingsButton('Ver qué se importó').disabled);
+    settingsButton('Ver qué se importó').click();
+    await waitFor(() => pd.querySelector('.sheet .history-row'));
+    check('Ajustes: lista de lo importado', [...pd.querySelectorAll('.sheet .history-row__title')].some((n) => n.textContent === 'Seed: tarea nueva v2'));
+    pd.querySelector('.sheet__cancel').click();
+    await closed();
 
     check('Sin errores en la consola', consoleErrors.length === 0, consoleErrors.join(' | '));
 

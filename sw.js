@@ -39,6 +39,7 @@ const ASSETS = [
   'js/views/seguimientos.js',
   'js/views/ajustes.js',
   'js/views/calendario.js',
+  'js/work-seed.js',
   'icons/icon.svg',
   'icons/apple-touch-icon-180.png',
   'icons/icon-192.png',

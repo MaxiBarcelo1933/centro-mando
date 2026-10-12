@@ -1,5 +1,5 @@
 // Pantalla "Ajustes" (se abre desde el avatar): áreas, backup, resumen del día,
-// tareas hechas, badge del ícono, datos de ejemplo y versión.
+// datos de trabajo, tareas hechas, badge del ícono, datos de ejemplo y versión.
 import { el } from '../dom.js';
 import { icon } from '../icons.js';
 import * as store from '../store.js';
@@ -10,6 +10,7 @@ import { openSheet } from '../components/sheet.js';
 import { showToast, tryAction } from '../components/toast.js';
 import { field, areaTag } from '../components/form.js';
 import { emptyState } from './common.js';
+import { parseWorkSeed, importWorkSeed, importedSummary } from '../work-seed.js';
 
 const BACKUP_WARNING_DAYS = 7;
 
@@ -24,6 +25,7 @@ export function renderAjustes() {
     ),
     areasSection(),
     backupSection(),
+    workSection(),
     daySection(),
     badgeSection(),
     sampleSection(),
@@ -240,6 +242,106 @@ async function previewImport(file) {
       confirmButton,
     ),
   });
+}
+
+// ---------- Datos de trabajo ----------
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function workSection() {
+  const info = store.getSetting('workSeed');
+  const summary = importedSummary();
+  const fileInput = el('input', { type: 'file', accept: 'application/json,.json', class: 'visually-hidden', tabindex: '-1', 'aria-hidden': 'true' });
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (file) previewWorkSeed(file);
+  });
+
+  let status = 'Todavía no cargaste tus datos de trabajo.';
+  if (summary) {
+    const counts = summary.groups.map((g) => `${g.items.length} ${g.label.toLowerCase()}`).join(', ');
+    status = `Versión ${summary.version} · última importación: ${formatLongDate(dateOf(summary.importedAt))} (${counts}).`;
+  }
+
+  return settingsSection('Datos de trabajo',
+    el('div', { class: 'card settings-card' },
+      el('p', { class: 'backup-status' }, status),
+      el('div', { class: 'button-row' },
+        el('button', { class: 'btn-secondary', type: 'button', onclick: () => fileInput.click() },
+          icon('download'), info ? 'Reimportar datos de trabajo' : 'Importar datos de trabajo'),
+        el('button', { class: 'btn-secondary', type: 'button', disabled: !summary, onclick: openImportedList },
+          'Ver qué se importó'),
+      ),
+      el('p', { class: 'hint' }, 'Elegí el archivo seed-trabajo.json. Solo agrega lo que falta: nunca duplica ni pisa lo que cambiaste en la app.'),
+      fileInput,
+    ),
+  );
+}
+
+async function previewWorkSeed(file) {
+  const result = parseWorkSeed(await file.text());
+  if (result.error) {
+    showToast(result.error, { duration: 6000 });
+    return;
+  }
+  const { seed, pending, existing } = result;
+  const total = pending.areas.length + pending.tasks.length + pending.followups.length;
+
+  const confirmButton = el('button', { class: 'btn-primary', type: 'button', disabled: total === 0 },
+    total === 0 ? 'No hay nada nuevo' : `Agregar ${plural(total, 'elemento', 'elementos')}`);
+  confirmButton.addEventListener('click', async () => {
+    confirmButton.disabled = true;
+    const added = await tryAction(() => importWorkSeed(seed), 'No se pudo importar. Probá de nuevo.');
+    if (!added) {
+      confirmButton.disabled = false;
+      return;
+    }
+    sheet.close();
+    showToast(`Listo: ${plural(added.tasks, 'tarea', 'tareas')} y ${plural(added.followups, 'seguimiento', 'seguimientos')} nuevos`);
+  });
+
+  const lines = [
+    pending.areas.length ? plural(pending.areas.length, 'área nueva', 'áreas nuevas') : null,
+    pending.tasks.length ? plural(pending.tasks.length, 'tarea', 'tareas') : null,
+    pending.followups.length ? plural(pending.followups.length, 'seguimiento', 'seguimientos') : null,
+  ].filter(Boolean);
+
+  const sheet = openSheet({
+    title: 'Datos de trabajo',
+    content: el('div', { class: 'form' },
+      el('div', { class: 'card settings-card' },
+        el('p', { class: 'import-summary__title' }, `Archivo versión ${seed.seedVersion}`),
+        total > 0
+          ? el('ul', { class: 'import-summary' }, lines.map((line) => el('li', {}, `Se agrega: ${line}`)))
+          : el('p', { class: 'hint' }, 'Todo lo de este archivo ya está en la app.'),
+        existing > 0
+          ? el('p', { class: 'hint' }, `${plural(existing, 'elemento ya estaba', 'elementos ya estaban')} y no se tocan.`)
+          : null,
+      ),
+      confirmButton,
+    ),
+  });
+}
+
+function openImportedList() {
+  const summary = importedSummary();
+  if (!summary) return;
+  const content = el('div', { class: 'form' },
+    summary.groups.filter((g) => g.items.length > 0).map((group) =>
+      el('section', { class: 'section' },
+        el('div', { class: 'section-head' },
+          el('h3', { class: 'group-title' }, group.label),
+          el('span', { class: 'section-aside' }, String(group.items.length)),
+        ),
+        el('ul', { class: 'card card--list list' }, group.items.map((item) =>
+          el('li', { class: 'history-row' },
+            el('span', { class: 'history-row__title' }, item.title),
+            item.gone ? el('span', { class: 'history-row__sub' }, 'Ya no está en la app: no se vuelve a agregar') : null,
+          ))),
+      )),
+  );
+  openSheet({ title: `Importado (versión ${summary.version})`, content });
 }
 
 // ---------- Tu día ----------
