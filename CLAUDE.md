@@ -181,5 +181,29 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   `<script type="module">` en el documento de la app (ver `tests/smoke.html`).
 
 ## Estado actual
-Publicada en https://maxibarcelo1933.github.io/centro-mando/ (repo público MaxiBarcelo1933/centro-mando, Pages desde main / root). Falta: prueba en iPhone real.
+Publicada en https://maxibarcelo1933.github.io/centro-mando/ (repo público MaxiBarcelo1933/centro-mando, Pages desde main / root). Instalada en el iPhone. En curso: Ampliación 1 (ver abajo).
 Para publicar cambios: subir CACHE_VERSION en sw.js, commit y git push (la credencial de GitHub ya queda guardada en Windows).
+
+## Ampliación 1: rutinas y proyecto 37
+Especificación: `prompt-cargar-tareas.md` (pedido del 12/10/2026). Objetivo: que sus tareas reales queden
+cargadas sin tipearlas, más rutinas, controles, el proyecto "Estandarización 37 PDV" y metas.
+
+Decisiones confirmadas:
+- **Privacidad (opción A):** los datos reales viven en `data/seed-trabajo.json`, que está en `.gitignore`
+  (el repo y Pages son públicos). Se cargan en el iPhone con Ajustes → "Importar datos de trabajo"
+  (se manda el archivo por mail/WhatsApp y se elige). No hay datos reales en el código ni en GitHub.
+- 5 pestañas: Hoy · Procesos · Proyectos · Seguimientos · Calendario.
+- Orden: 1) base de importación + tareas y seguimientos ✓ · 2) Proyecto 37 (en dos entregas) ·
+  3) Rutinas (recurrentes, feriados, último hábil, dependencias) · 4) Controles diarios/semanales/IM ·
+  después: Agenda del día + "Cómo trabajo", Metas, recordatorios .ics.
+- Los 3 seguimientos de la sección 6 no traían área: van en "otros" (editable en el JSON o en la app).
+
+Importación (`js/work-seed.js`):
+- Archivo `{ app: 'centro-mando-trabajo', seedVersion, areas, tasks, followups }`; cada elemento con `seedId`.
+  `parseWorkSeed()` valida todo antes de tocar nada; `importWorkSeed()` agrega solo lo que nunca se importó.
+- `settings.workSeed = { version, importedAt, imported: { seedId: { kind, id } } }`. Lo importado y después
+  borrado NO vuelve; lo editado/completado nunca se pisa. Las tareas/seguimientos guardan `seedId`
+  (y las tareas, `pdvCodes` para el futuro botón "Ver PDV").
+- `dueDate: "proximo_habil"` se calcula al importar (`dates.nextBusinessDay`, saltea `settings.holidays`,
+  precargados 2026-12-25 y 2027-01-01).
+- Áreas nuevas con id fijo: estandarizacion (Coral), sellout (Rosa), logistica (Lima, color nuevo en la paleta).
