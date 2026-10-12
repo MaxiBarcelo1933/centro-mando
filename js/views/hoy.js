@@ -9,6 +9,7 @@ import { showToast, tryAction } from '../components/toast.js';
 import { areaTag } from '../components/form.js';
 import { viewHeader, emptyState } from './common.js';
 import { openTaskEditor } from './task-sheet.js';
+import { showClosingTemplate } from './procesos.js';
 
 // Estado de pantalla que sobrevive a los re-render.
 const fold = { week: true, someday: false };
@@ -84,7 +85,14 @@ function summaryTiles(today) {
       el('span', { class: overdue > 0 ? 'tile__value tile__value--danger' : 'tile__value' }, String(overdue)),
       el('span', { class: 'tile__label' }, overdue === 1 ? 'Seguimiento vencido' : 'Seguimientos vencidos'),
     ),
-    el('button', { class: 'tile', type: 'button', onclick: () => navigate('procesos') },
+    el('button', {
+      class: 'tile',
+      type: 'button',
+      onclick: () => {
+        showClosingTemplate();
+        navigate('procesos');
+      },
+    },
       el('span', { class: 'tile__value' }, closingValue),
       el('span', { class: 'tile__label' }, 'Cierre de mes'),
       el('span', { class: 'progress', 'aria-hidden': 'true' }, bar),

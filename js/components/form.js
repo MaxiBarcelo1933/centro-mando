@@ -29,6 +29,31 @@ export function bucketChips(value, onChange) {
   return chipGroup({ label: '¿Cuándo?', options, value, onChange });
 }
 
+/**
+ * Campo de texto de una línea que crece hacia abajo si el texto es largo
+ * (así se lee completo aunque al lado haya botones). Enter no agrega saltos de línea.
+ */
+export function autoGrowInput(attrs, value, onInput) {
+  const input = el('textarea', { class: 'field__input field__input--auto', rows: 1, ...attrs });
+  input.value = value;
+  const fit = () => {
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight + 2}px`; // +2 por el borde
+  };
+  input.addEventListener('input', () => {
+    // Si pegás un texto con saltos de línea, los convertimos en espacios.
+    if (input.value.includes('\n')) input.value = input.value.replace(/\n+/g, ' ');
+    onInput(input.value);
+    fit();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') event.preventDefault();
+  });
+  // Medimos cuando ya está en pantalla.
+  requestAnimationFrame(fit);
+  return input;
+}
+
 /** Pastilla con el nombre del área en su color. */
 export function areaTag(areaId) {
   const area = store.getArea(areaId);
