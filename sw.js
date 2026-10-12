@@ -3,7 +3,7 @@
 //
 // IMPORTANTE: cada vez que publiques cambios, subí CACHE_VERSION (v1 → v2…).
 // Así el teléfono detecta que hay una versión nueva y descarga los archivos de nuevo.
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `mando-${CACHE_VERSION}`;
 
 // Todos los archivos que forman la app. Si agregás uno nuevo, sumalo acá.
@@ -38,6 +38,7 @@ const ASSETS = [
   'js/views/procesos.js',
   'js/views/seguimientos.js',
   'js/views/ajustes.js',
+  'js/views/calendario.js',
   'icons/icon.svg',
   'icons/apple-touch-icon-180.png',
   'icons/icon-192.png',

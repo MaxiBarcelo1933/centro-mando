@@ -226,6 +226,46 @@ export function countPendingToday(today = todayISO()) {
   return getTodayTasks(today).filter((t) => !t.done).length;
 }
 
+export function getTask(id) {
+  return state.tasks.find((t) => t.id === id) ?? null;
+}
+
+// ---------- Calendario ----------
+
+/**
+ * Lo que va en el calendario entre `from` y `to` (inclusive), agrupado por día:
+ * { 'YYYY-MM-DD': [{ kind: 'task'|'followup', id, title, area, date, time, done, overdue }] }
+ * - Tareas con fecha (hechas o no). Las que no tienen fecha (Esta semana / Algún día) no van.
+ * - Seguimientos abiertos, en su fecha límite (sin hora: van en "Todo el día").
+ * Cada día viene ordenado: primero sin hora, después por hora.
+ */
+export function getCalendarItems(from, to, today = todayISO()) {
+  const days = {};
+  const push = (date, item) => {
+    if (date < from || date > to) return;
+    (days[date] ??= []).push({ ...item, date });
+  };
+  for (const t of state.tasks) {
+    if (!t.dueDate) continue;
+    push(t.dueDate, {
+      kind: 'task', id: t.id, title: t.title, area: t.area, time: t.time ?? null,
+      done: t.done, overdue: isTaskOverdue(t, today),
+    });
+  }
+  for (const f of state.followups) {
+    if (f.status !== 'open') continue;
+    push(f.dueDate, {
+      kind: 'followup', id: f.id, title: f.title, area: f.area, time: null,
+      done: false, overdue: isFollowupOverdue(f, today),
+    });
+  }
+  const byTime = (a, b) => Number(Boolean(a.time)) - Number(Boolean(b.time))
+    || (a.time ?? '').localeCompare(b.time ?? '')
+    || (a.kind === b.kind ? 0 : (a.kind === 'task' ? -1 : 1));
+  for (const items of Object.values(days)) items.sort(byTime);
+  return days;
+}
+
 // ---------- Seguimientos: escrituras ----------
 
 function findFollowup(id) {

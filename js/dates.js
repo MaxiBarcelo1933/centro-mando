@@ -110,3 +110,26 @@ export function msUntilNextMidnight(now = new Date()) {
   const p = zonedParts(now);
   return ((24 - p.hour) * 3600 - p.minute * 60 - p.second) * 1000 - now.getMilliseconds();
 }
+
+/** Lunes de la semana de `iso` (la semana empieza el lunes). */
+export function startOfWeek(iso) {
+  return addDays(iso, -((weekdayOf(iso) + 6) % 7));
+}
+
+/** Suma meses y queda en el día 1: addMonths('2026-10-12', 1) → '2026-11-01'. */
+export function addMonths(iso, months) {
+  const d = toUTC(iso);
+  return fromUTC(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, 1)));
+}
+
+/** "octubre 2026" */
+export function formatMonthYear(iso) {
+  const d = toUTC(iso);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** Minutos que pasaron desde la medianoche en Montevideo (para la línea de "ahora"). */
+export function nowMinutes(now = new Date()) {
+  const p = zonedParts(now);
+  return p.hour * 60 + p.minute;
+}

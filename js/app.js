@@ -1,5 +1,5 @@
 // Arranque de la app y "router" por pestañas.
-// La pestaña activa se guarda en la dirección (#hoy, #procesos, #seguimientos),
+// La pestaña activa se guarda en la dirección (#hoy, #procesos, #seguimientos, #calendario),
 // así el botón "atrás" del navegador funciona en la compu.
 import { el } from './dom.js';
 import * as store from './store.js';
@@ -8,6 +8,7 @@ import { currentTab, setRenderer } from './router.js';
 import { renderHoy } from './views/hoy.js';
 import { renderProcesos } from './views/procesos.js';
 import { renderSeguimientos } from './views/seguimientos.js';
+import { renderCalendario } from './views/calendario.js';
 import { renderAjustes } from './views/ajustes.js';
 import { openQuickCapture } from './views/captura.js';
 import { showToast } from './components/toast.js';
@@ -18,6 +19,7 @@ const VIEWS = {
   hoy: renderHoy,
   procesos: renderProcesos,
   seguimientos: renderSeguimientos,
+  calendario: renderCalendario,
   ajustes: renderAjustes,
 };
 
@@ -32,6 +34,8 @@ function render() {
   // Al cambiar de pantalla, una entrada suave (no al redibujar la misma).
   if (tab !== renderedTab && renderedTab !== null) view.classList.add('view-enter');
   viewRoot.replaceChildren(view);
+  // El calendario ocupa todo el alto y scrollea solo su grilla (la barra de arriba queda fija).
+  viewRoot.classList.toggle('content--fill', tab === 'calendario');
   for (const button of tabs) {
     if (button.dataset.tab === tab) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -69,7 +73,7 @@ function setupTabs() {
 
 function setupFab() {
   // Se abre en el mismo toque: así iOS muestra el teclado al instante.
-  document.getElementById('fab').addEventListener('click', openQuickCapture);
+  document.getElementById('fab').addEventListener('click', () => openQuickCapture());
 }
 
 // "Hoy" se recalcula al volver a la app y justo después de la medianoche.

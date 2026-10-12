@@ -72,6 +72,9 @@
     check('overdueSince lunes', dates.overdueSinceLabel('2026-10-05', '2026-10-12') === 'desde el lun 5');
     check('nextMonday desde lunes', dates.nextMonday('2026-10-12') === '2026-10-19');
     check('nextMonday desde miércoles', dates.nextMonday('2026-10-14') === '2026-10-19');
+    check('startOfWeek desde miércoles', dates.startOfWeek('2026-10-14') === '2026-10-12');
+    check('startOfWeek desde domingo', dates.startOfWeek('2026-10-18') === '2026-10-12');
+    check('addMonths cruza el año', dates.addMonths('2026-12-15', 1) === '2027-01-01');
     // 02:30 UTC del 13 = 23:30 del 12 en Montevideo
     check('todayISO usa hora de Montevideo', dates.todayISO(new Date('2026-10-13T02:30:00Z')) === '2026-10-12');
     const ms = dates.msUntilNextMidnight(new Date('2026-10-13T02:30:00Z'));
@@ -490,6 +493,66 @@
     await waitFor(() => p$$('.fold .task-row__title').some((n) => n.textContent === 'Tarea atrasada'));
     const tomorrowRow = p$$('.fold .task-row').find((r) => r.textContent.includes('Tarea atrasada'));
     check('"Mañana" la pasa a mañana', Boolean(tomorrowRow) && tomorrowRow.textContent.includes('Mañana'));
+
+    // ---------- Calendario ----------
+    const calToday = dates.todayISO();
+    const calTomorrow = dates.addDays(calToday, 1);
+    await appStore.addTask({ title: 'Cal: reunión', area: 'meta', bucket: 'semana', dueDate: calTomorrow, time: '10:00' });
+    await appStore.addTask({ title: 'Cal: sin fecha', area: 'otros', bucket: 'algun_dia' });
+    const calItems = appStore.getCalendarItems(calToday, dates.addDays(calToday, 7));
+    check('Calendario: tarea con fecha y hora en su día', (calItems[calTomorrow] ?? []).some((i) => i.title === 'Cal: reunión' && i.time === '10:00' && i.date === calTomorrow));
+    check('Calendario: las tareas sin fecha no aparecen', !Object.values(calItems).flat().some((i) => i.title === 'Cal: sin fecha'));
+    check('Calendario: seguimientos abiertos en su fecha límite', Object.values(calItems).flat().some((i) => i.kind === 'followup'));
+    const sorted = (calItems[calTomorrow] ?? []).map((i) => Boolean(i.time));
+    check('Calendario: primero lo que no tiene hora', sorted.indexOf(true) === -1 || !sorted.slice(sorted.indexOf(true)).includes(false));
+
+    pw.location.hash = 'calendario';
+    await waitFor(() => p$('.segmented'));
+    check('Pestaña Calendario', p$('.title')?.textContent === 'Calendario' && p$('.tab[data-tab="calendario"]')?.getAttribute('aria-current') === 'page');
+    check('Calendario: arranca en Día, con hoy', p$('.segmented__btn[aria-pressed="true"]')?.textContent === 'Día' && p$('.cal-nav__today')?.disabled);
+    p$$('.cal-nav .icon-btn')[1].click(); // día siguiente
+    await waitFor(() => p$$('.cal-block').some((b) => b.textContent.includes('Cal: reunión')));
+    check('Calendario: ‹ › cambia de día y muestra el bloque a su hora', p$$('.cal-block').some((b) => b.textContent.includes('Cal: reunión')) && !p$('.cal-nav__today').disabled);
+
+    // Tocar un horario libre abre la captura con ese día y hora
+    p$$('.cal-slot').find((s) => s.getAttribute('aria-label').endsWith('a las 15:00')).click();
+    await waitFor(() => pd.querySelector('.sheet input[type="date"]'));
+    const calDate = pd.querySelector('.sheet input[type="date"]');
+    const calTime = pd.querySelector('.sheet input[type="time"]');
+    check('Calendario: tocar un horario prellena día y hora', calDate?.value === calTomorrow && calTime?.value === '15:00', `${calDate?.value} ${calTime?.value}`);
+    const calTitle = pd.querySelector('.sheet .field__input--big');
+    calTitle.value = 'Cal: desde la grilla';
+    calTitle.dispatchEvent(new pw.Event('input', { bubbles: true }));
+    pd.querySelector('.sheet .btn-primary').click();
+    await waitFor(() => p$$('.cal-block').some((b) => b.textContent.includes('Cal: desde la grilla')));
+    const fromGrid = appStore.getWeekTasks().find((t) => t.title === 'Cal: desde la grilla');
+    check('Calendario: la tarea se guarda en ese día y hora', fromGrid?.dueDate === calTomorrow && fromGrid?.time === '15:00');
+    await closed();
+
+    // Tocar un bloque abre la tarea para editarla
+    p$$('.cal-block').find((b) => b.textContent.includes('Cal: reunión')).click();
+    await waitFor(() => pd.querySelector('.sheet__title')?.textContent === 'Editar tarea');
+    check('Calendario: tocar una tarea la abre para editar', pd.querySelector('.sheet .field__input--big')?.value === 'Cal: reunión');
+    pd.querySelector('.sheet__cancel').click();
+    await closed();
+
+    // Semana laboral
+    p$$('.segmented__btn').find((b) => b.textContent === 'Semana').click();
+    await waitFor(() => p$('.cal-grid--week'));
+    check('Calendario: semana de lunes a viernes', p$$('.cal-grid--week .cal-col').length === 5 && p$$('.cal-week-head__name')[0]?.textContent === 'lun');
+
+    // Mes
+    p$$('.segmented__btn').find((b) => b.textContent === 'Mes').click();
+    await waitFor(() => p$('.cal-month'));
+    const monthDays = p$$('.cal-day');
+    check('Calendario: mes en semanas completas', monthDays.length % 7 === 0 && monthDays.length >= 28);
+    p$('.cal-nav__today').click();
+    await waitFor(() => p$('.cal-day.is-today[aria-pressed="true"]'));
+    check('Calendario: "Hoy" vuelve al día de hoy', Boolean(p$('.cal-day.is-today[aria-pressed="true"]')));
+    const tomorrowCell = p$$('.cal-day').find((d) => d.getAttribute('aria-label').startsWith(dates.formatLongDate(calTomorrow)));
+    tomorrowCell?.click();
+    await waitFor(() => p$$('.cal-row__title').some((t) => t.textContent === 'Cal: reunión'));
+    check('Calendario: tocar un día muestra su lista', p$$('.cal-row__title').some((t) => t.textContent === 'Cal: reunión'));
 
     check('Sin errores en la consola', consoleErrors.length === 0, consoleErrors.join(' | '));
 

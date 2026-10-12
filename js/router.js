@@ -1,13 +1,15 @@
-// Navegación. La pantalla activa vive en la dirección (#hoy, #procesos, #seguimientos, #ajustes).
+// Navegación. La pantalla activa vive en la dirección (#hoy, #procesos, #seguimientos, #calendario, #ajustes).
 // `ui` guarda estado de pantalla que no se guarda en la base (ej. el filtro elegido).
 
-export const TABS = ['hoy', 'procesos', 'seguimientos'];
+export const TABS = ['hoy', 'procesos', 'seguimientos', 'calendario'];
 // Ajustes no es una pestaña: se abre desde el avatar.
 const ROUTES = [...TABS, 'ajustes'];
 const DEFAULT_TAB = 'hoy';
 
 export const ui = {
   followupFilter: 'todos',
+  calendarView: 'day',  // 'day' | 'week' | 'month'
+  calendarDate: null,   // día elegido en el calendario ("YYYY-MM-DD"); null = hoy
 };
 
 let renderer = () => {};
