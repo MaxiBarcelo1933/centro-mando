@@ -103,7 +103,7 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
 3. Procesos (plantillas, runs, variables, seed, edición, historial) ✓
 4. Seguimientos (lista, filtros, detalle, avances, posponer, resueltos, captura) ✓
 5. Ajustes y cierre (áreas, backup, resumen del día, datos de ejemplo, badge, pulido) ✓
-6. Publicación (GitHub Pages + prueba en iPhone)
+6. Publicación (GitHub Pages ✓ — falta la prueba en iPhone)
 
 ## Notas de implementación
 - DOM: usar `el()` de `js/dom.js` (agrega textos como nodos de texto, nunca HTML).
@@ -169,5 +169,5 @@ Decisiones/ajustes sobre la spec (confirmadas por el usuario en Fase 0):
   `<script type="module">` en el documento de la app (ver `tests/smoke.html`).
 
 ## Estado actual
-Fase 5 hecha (Ajustes y cierre). Próxima: Fase 6 (Publicación en GitHub Pages + prueba en iPhone).
-Para la Fase 6: preguntar si tiene cuenta de GitHub y el nombre del repo; subir CACHE_VERSION.
+Publicada en https://maxibarcelo1933.github.io/centro-mando/ (repo público MaxiBarcelo1933/centro-mando, Pages desde main / root). Falta: prueba en iPhone real.
+Para publicar cambios: subir CACHE_VERSION en sw.js, commit y git push (la credencial de GitHub ya queda guardada en Windows).
