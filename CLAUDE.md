@@ -207,3 +207,17 @@ Importación (`js/work-seed.js`):
 - `dueDate: "proximo_habil"` se calcula al importar (`dates.nextBusinessDay`, saltea `settings.holidays`,
   precargados 2026-12-25 y 2027-01-01).
 - Áreas nuevas con id fijo: estandarizacion (Coral), sellout (Rosa), logistica (Lima, color nuevo en la paleta).
+
+Proyecto 37 PDV (parte 2, primera entrega):
+- IndexedDB v2: stores `projects` y `pdvs` (backup schemaVersion 2; las copias v1 se siguen importando).
+- PDV: `id = "proyecto:código"` (el código es el identificador, nunca el nombre). Campos en inglés:
+  code, client, department, giro, zone, status, supplier, quoteUSD, estimatedFinish, notes, nextAction,
+  nextDate, waitingFor (cliente/proveedor/yo), stages {etapa: true}, review [motivos], history [{date, text}].
+  En el JSON de trabajo quedan con las claves de la planilla (codigo, cliente…); `work-seed.js` las traduce
+  y frena si los PDV activos no dan la meta.
+- Reglas: "falta" = no INSTALADO ni REEMPLAZADO. Cambiar el estado se anota en la bitácora; pasar a
+  Instalado marca las etapas hasta "Instalado"; marcar la etapa "Instalado" pasa el estado a Instalado.
+- Pantalla `views/proyectos.js` (KPIs, vistas por chips en `ui.projectView`) + ficha `views/pdv-sheet.js`.
+  Tarjeta de prioridad arriba en Hoy (`getPriorityProject`, `getProjectNext`).
+- Números: `formatNumber` / `formatUSD` / `formatPesos` / `parseDecimal` en `views/common.js` (formato uruguayo).
+- Falta (segunda entrega): exportar CSV, reemplazo de PDV en CAMBIO, PDV en Seguimientos, "Ver PDV" desde tareas.
