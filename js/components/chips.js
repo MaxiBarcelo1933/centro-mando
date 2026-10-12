@@ -8,7 +8,7 @@ let groupCounter = 0;
  * Devuelve { element, setValue, value }.
  * `color` dibuja un puntito del color del área al lado del texto.
  */
-export function chipGroup({ label, options, value, onChange = null }) {
+export function chipGroup({ label, options, value, onChange = null, hideLabel = false }) {
   const labelId = `chips-${++groupCounter}`;
   let current = value;
 
@@ -32,7 +32,7 @@ export function chipGroup({ label, options, value, onChange = null }) {
   }
 
   const element = el('div', { class: 'field', role: 'group', 'aria-labelledby': labelId },
-    el('span', { class: 'field__label', id: labelId }, label),
+    el('span', { class: hideLabel ? 'visually-hidden' : 'field__label', id: labelId }, label),
     el('div', { class: 'chips' }, buttons),
   );
 

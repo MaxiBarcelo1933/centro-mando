@@ -10,6 +10,7 @@ import { areaTag } from '../components/form.js';
 import { viewHeader, emptyState } from './common.js';
 import { openTaskEditor } from './task-sheet.js';
 import { showClosingTemplate } from './procesos.js';
+import { openFollowupDetail } from './followup-sheet.js';
 
 // Estado de pantalla que sobrevive a los re-render.
 const fold = { week: true, someday: false };
@@ -183,7 +184,7 @@ function waitingSection(today) {
         el('button', {
           class: 'followup-row',
           type: 'button',
-          onclick: () => showToast('El detalle de seguimientos llega en la Fase 4'),
+          onclick: () => openFollowupDetail(f.id),
         },
           el('span', { class: 'followup-row__text' },
             el('span', { class: 'followup-row__title' }, f.title),
