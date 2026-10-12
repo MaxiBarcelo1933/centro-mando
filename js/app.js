@@ -1,30 +1,30 @@
 // Arranque de la app y "router" por pestañas.
 // La pestaña activa se guarda en la dirección (#hoy, #procesos, #seguimientos),
 // así el botón "atrás" del navegador funciona en la compu.
+import { el } from './dom.js';
+import * as store from './store.js';
+import { msUntilNextMidnight } from './dates.js';
+import { currentTab, setRenderer } from './router.js';
 import { renderHoy } from './views/hoy.js';
 import { renderProcesos } from './views/procesos.js';
 import { renderSeguimientos } from './views/seguimientos.js';
+import { openQuickCapture } from './views/captura.js';
 import { showToast } from './components/toast.js';
 import { setupInstallBanner } from './components/install-banner.js';
+import { emptyState } from './views/common.js';
 
 const VIEWS = {
   hoy: renderHoy,
   procesos: renderProcesos,
   seguimientos: renderSeguimientos,
 };
-const DEFAULT_TAB = 'hoy';
 
 const viewRoot = document.getElementById('view');
 const tabs = document.querySelectorAll('.tab');
 let renderedTab = null;
 
-function currentTab() {
-  const tab = location.hash.slice(1);
-  return Object.hasOwn(VIEWS, tab) ? tab : DEFAULT_TAB;
-}
-
 /** Dibuja la sección activa. Se llama en cada cambio de pestaña o de datos. */
-export function render() {
+function render() {
   const tab = currentTab();
   viewRoot.replaceChildren(VIEWS[tab]());
   for (const button of tabs) {
@@ -34,6 +34,21 @@ export function render() {
   // Al cambiar de pestaña volvemos arriba; al re-dibujar la misma, no.
   if (tab !== renderedTab) viewRoot.scrollTop = 0;
   renderedTab = tab;
+  updateBadges();
+}
+
+// Globito rojo de Seguimientos + número en el ícono de la app (si está activado).
+function updateBadges() {
+  const overdue = store.countOverdueFollowups();
+  const tabBadge = document.getElementById('badge-seguimientos');
+  tabBadge.hidden = overdue === 0;
+  tabBadge.textContent = String(overdue);
+  tabBadge.setAttribute('aria-label', `${overdue} vencidos`);
+
+  if (!store.getSetting('badgeEnabled') || !('setAppBadge' in navigator)) return;
+  const count = store.getBadgeCount();
+  const update = count > 0 ? navigator.setAppBadge(count) : navigator.clearAppBadge();
+  update.catch(() => {}); // si el sistema no lo permite, lo ignoramos
 }
 
 function setupTabs() {
@@ -48,16 +63,22 @@ function setupTabs() {
 }
 
 function setupFab() {
-  document.getElementById('fab').addEventListener('click', () => {
-    showToast('La captura rápida llega en la Fase 2');
-  });
+  // Se abre en el mismo toque: así iOS muestra el teclado al instante.
+  document.getElementById('fab').addEventListener('click', openQuickCapture);
 }
 
-// Si la app queda abierta de un día para otro, al volver a verla se recalcula "hoy".
+// "Hoy" se recalcula al volver a la app y justo después de la medianoche.
 function setupDayRefresh() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') render();
   });
+  const scheduleMidnight = () => {
+    setTimeout(() => {
+      render();
+      scheduleMidnight();
+    }, msUntilNextMidnight() + 1000);
+  };
+  scheduleMidnight();
 }
 
 // Service worker: el "ayudante" que guarda una copia de la app para que ande sin internet.
@@ -81,9 +102,31 @@ function registerServiceWorker() {
   });
 }
 
-setupInstallBanner();
-setupTabs();
-setupFab();
-setupDayRefresh();
-render();
-registerServiceWorker();
+function showStartupError(error) {
+  console.warn(error);
+  document.getElementById('fab').hidden = true;
+  viewRoot.replaceChildren(el('div', { class: 'view' },
+    el('div', { class: 'card' },
+      emptyState('No pude abrir tus datos guardados. Cerrá la app del todo y volvé a abrirla. Si sigue pasando, puede que el navegador esté en modo privado.'),
+    ),
+  ));
+}
+
+async function start() {
+  registerServiceWorker();
+  try {
+    await store.init();
+  } catch (error) {
+    showStartupError(error);
+    return;
+  }
+  setRenderer(render);
+  store.subscribe(render);
+  setupInstallBanner();
+  setupTabs();
+  setupFab();
+  setupDayRefresh();
+  render();
+}
+
+start();
