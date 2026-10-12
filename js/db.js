@@ -59,3 +59,32 @@ export const remove = (storeName, key) => run(storeName, 'readwrite', (store) =>
 export const putMany = (storeName, values) => run(storeName, 'readwrite', (store) => {
   for (const value of values) store.put(value);
 });
+export const removeMany = (storeName, keys) => run(storeName, 'readwrite', (store) => {
+  for (const key of keys) store.delete(key);
+});
+
+/**
+ * Reemplaza el contenido de varios stores en UNA sola transacción
+ * (si algo falla, no se cambia nada). Se usa al importar un backup.
+ */
+export async function replaceAll(dataByStore) {
+  const db = await openDB();
+  const names = Object.keys(dataByStore);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(names, 'readwrite');
+    for (const name of names) {
+      const store = tx.objectStore(name);
+      store.clear();
+      for (const value of dataByStore[name]) store.put(value);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error('Se canceló la importación'));
+  });
+}
+
+/** Lee todo el contenido de varios stores (para exportar). */
+export async function readAll(names) {
+  const entries = await Promise.all(names.map(async (name) => [name, await getAll(name)]));
+  return Object.fromEntries(entries);
+}

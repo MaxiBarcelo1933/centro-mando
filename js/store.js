@@ -2,9 +2,9 @@
 // Todas las escrituras pasan por acá: se guardan en IndexedDB, se actualiza
 // la copia en memoria y se avisa a quien esté escuchando (re-render + badge).
 import * as db from './db.js';
-import { todayISO, dateOf, addDays, diffDays } from './dates.js';
+import { todayISO, dateOf, addDays, diffDays, formatLongDate, formatShortDate, overdueSinceLabel } from './dates.js';
 import { currentPeriod, periodWorkStart } from './periods.js';
-import { SEED_TEMPLATES } from './seed.js';
+import { SEED_TEMPLATES, sampleData } from './seed.js';
 
 export const DEFAULT_AREAS = [
   { id: 'ventas', name: 'Reporte de Ventas', color: '#8FB3FF', bg: 'rgba(91, 141, 239, 0.16)', hidden: false },
@@ -61,6 +61,7 @@ export async function init() {
   state.followups = followups;
   state.templates = templates;
   state.runs = runs;
+  state.settings = { ...DEFAULT_SETTINGS };
   for (const row of settingsRows) state.settings[row.key] = row.value;
 
   await seedTemplates();
@@ -120,8 +121,9 @@ function normalizeSchedule(bucket, dueDate) {
   return { bucket, dueDate: dueDate || null };
 }
 
-export function addTask({ title, area, bucket = 'hoy', time = null, dueDate = null, notes = '' }) {
+export function addTask({ title, area, bucket = 'hoy', time = null, dueDate = null, notes = '', sample = false }) {
   return saveTask({
+    ...(sample ? { sample: true } : {}),
     id: newId(),
     title: title.trim(),
     area,
@@ -245,8 +247,9 @@ export function getFollowup(id) {
   return state.followups.find((f) => f.id === id) ?? null;
 }
 
-export function addFollowup({ title, area, nextAction = '', dueDate, owner = 'me', waitingFor = '' }) {
+export function addFollowup({ title, area, nextAction = '', dueDate, owner = 'me', waitingFor = '', sample = false }) {
   return saveFollowup({
+    ...(sample ? { sample: true } : {}),
     id: newId(),
     title: title.trim(),
     area,
@@ -509,4 +512,158 @@ export function getClosingProgress(today = todayISO()) {
 
 export function getBadgeCount(today = todayISO()) {
   return countPendingToday(today) + countOverdueFollowups(today);
+}
+
+// ---------- Áreas ----------
+
+/** Paleta para las áreas: color del texto y fondo de la etiqueta (16% de opacidad). */
+export const AREA_PALETTE = [
+  { name: 'Azul', color: '#8FB3FF', bg: 'rgba(91, 141, 239, 0.16)' },
+  { name: 'Ámbar', color: '#F7BC55', bg: 'rgba(245, 165, 36, 0.16)' },
+  { name: 'Verde', color: '#6FDCA6', bg: 'rgba(63, 191, 127, 0.16)' },
+  { name: 'Violeta', color: '#CDB0FF', bg: 'rgba(185, 140, 245, 0.16)' },
+  { name: 'Celeste', color: '#7FD8E0', bg: 'rgba(127, 216, 224, 0.16)' },
+  { name: 'Coral', color: '#FF9F8A', bg: 'rgba(255, 122, 110, 0.16)' },
+  { name: 'Rosa', color: '#F5A3D7', bg: 'rgba(240, 120, 200, 0.16)' },
+  { name: 'Gris', color: '#C4C9D2', bg: '#232935' },
+];
+
+export function updateArea(id, patch) {
+  const areas = state.settings.areas.map((a) => (a.id === id ? { ...a, ...patch } : a));
+  return setSetting('areas', areas);
+}
+
+export function addArea({ name, color, bg }) {
+  const area = { id: `area-${newId().slice(0, 8)}`, name: name.trim(), color, bg, hidden: false };
+  return setSetting('areas', [...state.settings.areas, area]).then(() => area);
+}
+
+// ---------- Historial de tareas hechas ----------
+
+/** Tareas completadas agrupadas por día: [{ date, tasks }], del día más nuevo al más viejo. */
+export function getDoneTasksByDay() {
+  const byDay = new Map();
+  for (const task of state.tasks.filter((t) => t.done && t.doneAt)) {
+    const day = dateOf(task.doneAt);
+    if (!byDay.has(day)) byDay.set(day, []);
+    byDay.get(day).push(task);
+  }
+  return [...byDay.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, tasks]) => ({ date, tasks: tasks.sort((a, b) => a.doneAt.localeCompare(b.doneAt)) }));
+}
+
+// ---------- Resumen del día (para pegar en Teams/WhatsApp) ----------
+
+export function buildDaySummary(today = todayISO()) {
+  const tasks = getTodayTasks(today);
+  const done = tasks.filter((t) => t.done);
+  const pending = tasks.filter((t) => !t.done);
+  const overdue = getOpenFollowups('vencidos', today);
+  const date = formatLongDate(today);
+
+  const lines = [`Resumen del ${date}`, ''];
+  lines.push(`Hecho hoy (${done.length}):`);
+  if (done.length === 0) lines.push('• Nada todavía');
+  for (const t of done) lines.push(`• ${t.title}`);
+
+  lines.push('', `Pendiente (${pending.length}):`);
+  if (pending.length === 0) lines.push('• Nada pendiente');
+  for (const t of pending) {
+    const extra = isTaskOverdue(t, today) ? ` (atrasada ${overdueSinceLabel(t.dueDate, today)})` : (t.time ? ` (${t.time})` : '');
+    lines.push(`• ${t.title}${extra}`);
+  }
+
+  lines.push('', `Seguimientos vencidos (${overdue.length}):`);
+  if (overdue.length === 0) lines.push('• Ninguno');
+  for (const f of overdue) {
+    const next = f.nextAction ? `. Próxima acción: ${f.nextAction}` : '';
+    lines.push(`• ${f.title} (venció el ${formatShortDate(f.dueDate)})${next}`);
+  }
+  return lines.join('\n');
+}
+
+// ---------- Datos de ejemplo ----------
+
+export function hasSampleData() {
+  return state.tasks.some((t) => t.sample) || state.followups.some((f) => f.sample);
+}
+
+export async function loadSampleData(today = todayISO()) {
+  const sample = sampleData(today);
+  for (const task of sample.tasks) await addTask({ ...task, bucket: 'hoy', sample: true });
+  for (const followup of sample.followups) await addFollowup({ ...followup, sample: true });
+}
+
+export async function clearSampleData() {
+  const taskIds = state.tasks.filter((t) => t.sample).map((t) => t.id);
+  const followupIds = state.followups.filter((f) => f.sample).map((f) => f.id);
+  await db.removeMany('tasks', taskIds);
+  await db.removeMany('followups', followupIds);
+  state.tasks = state.tasks.filter((t) => !t.sample);
+  state.followups = state.followups.filter((f) => !f.sample);
+  notify();
+  return taskIds.length + followupIds.length;
+}
+
+// ---------- Backup ----------
+
+export const BACKUP_SCHEMA_VERSION = 1;
+const BACKUP_STORES = ['tasks', 'followups', 'processTemplates', 'processRuns', 'settings'];
+
+/** Todo lo guardado, listo para convertir a JSON. */
+export async function exportBackup() {
+  return {
+    app: 'centro-mando',
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: await db.readAll(BACKUP_STORES),
+  };
+}
+
+const isText = (value) => typeof value === 'string';
+const BACKUP_CHECKS = {
+  tasks: (t) => isText(t?.id) && isText(t?.title) && typeof t.done === 'boolean',
+  followups: (f) => isText(f?.id) && isText(f?.title) && isText(f?.dueDate) && Array.isArray(f?.history),
+  processTemplates: (t) => isText(t?.id) && isText(t?.name) && Array.isArray(t?.groups),
+  processRuns: (r) => isText(r?.id) && isText(r?.templateId) && isText(r?.period) && typeof r?.checked === 'object',
+  settings: (s) => isText(s?.key),
+};
+
+/**
+ * Revisa un backup ANTES de tocar la base.
+ * Devuelve { backup, counts, exportedAt } si está bien, o { error } con un mensaje para mostrar.
+ */
+export function parseBackup(text) {
+  let backup;
+  try {
+    backup = JSON.parse(text);
+  } catch {
+    return { error: 'El archivo no se puede leer: no es una copia válida.' };
+  }
+  if (backup?.app !== 'centro-mando') return { error: 'Ese archivo no es una copia de Centro de Mando.' };
+  if (typeof backup.schemaVersion !== 'number' || backup.schemaVersion > BACKUP_SCHEMA_VERSION) {
+    return { error: 'La copia es de una versión más nueva de la app. Actualizá la app y probá de nuevo.' };
+  }
+  const data = backup.data ?? {};
+  for (const [name, check] of Object.entries(BACKUP_CHECKS)) {
+    if (!Array.isArray(data[name])) return { error: 'A la copia le faltan datos: no se puede importar.' };
+    if (!data[name].every(check)) return { error: 'La copia tiene datos dañados: no se puede importar.' };
+  }
+  return {
+    backup,
+    exportedAt: backup.exportedAt ?? null,
+    counts: {
+      tasks: data.tasks.length,
+      followups: data.followups.length,
+      templates: data.processTemplates.length,
+    },
+  };
+}
+
+/** Reemplaza TODO por el contenido del backup (ya validado con parseBackup). */
+export async function importBackup(backup) {
+  await db.replaceAll(Object.fromEntries(BACKUP_STORES.map((name) => [name, backup.data[name]])));
+  await init();
+  notify();
 }

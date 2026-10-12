@@ -1,3 +1,28 @@
+import { MONTHS, addDays } from './dates.js';
+
+/**
+ * Datos de ejemplo para probar la app (Ajustes → Cargar datos de ejemplo).
+ * Se guardan con `sample: true` para poder borrarlos después sin tocar lo tuyo.
+ */
+export function sampleData(today) {
+  const month = MONTHS[Number(today.slice(5, 7)) - 1];
+  return {
+    tasks: [
+      { title: 'Pegar la bajada en BASE (Reporte de Ventas)', area: 'ventas', time: '09:30' },
+      { title: 'Llamar a 5 PDV en riesgo inactivo', area: 'pdv', time: '11:00' },
+      { title: 'Pedir cotización del cartel 8×2 m', area: 'carteleria', time: '15:00' },
+      { title: `Enviar base de ${month} a vendedores`, area: 'meta', time: '17:00' },
+    ],
+    followups: [
+      { title: 'Cartel gomería · San José', area: 'carteleria', nextAction: 'Consultar a MTOP si aprueban la versión iluminada', dueDate: addDays(today, -3), owner: 'me' },
+      { title: 'Orden E01-000055 sin cliente', area: 'ventas', nextAction: 'Pedir a sistemas que asigne el cliente', dueDate: today, owner: 'me' },
+      { title: 'Relevamiento con código cruzado', area: 'relevamiento', nextAction: 'Revisar los códigos que no cruzan', dueDate: addDays(today, 2), owner: 'me' },
+      { title: 'Permiso de cartel · Canelones', area: 'carteleria', nextAction: 'Esperar la firma del propietario', dueDate: addDays(today, 3), owner: 'other', waitingFor: 'propietario' },
+      { title: 'Cotización de banners 70×110', area: 'carteleria', nextAction: 'Esperar el precio con instalación', dueDate: addDays(today, 4), owner: 'other', waitingFor: 'proveedor' },
+    ],
+  };
+}
+
 // Plantilla inicial de procesos: el cierre de mes real.
 // Los ids de los pasos son fijos para que las marcas de cada mes sigan apuntando bien.
 
