@@ -68,13 +68,18 @@ function setupFab() {
 }
 
 // "Hoy" se recalcula al volver a la app y justo después de la medianoche.
+// Si empezó un mes o semana nueva, también se crea el checklist del período.
+function refreshDay() {
+  store.refreshDay().catch((error) => console.warn(error)).finally(render);
+}
+
 function setupDayRefresh() {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') render();
+    if (document.visibilityState === 'visible') refreshDay();
   });
   const scheduleMidnight = () => {
     setTimeout(() => {
-      render();
+      refreshDay();
       scheduleMidnight();
     }, msUntilNextMidnight() + 1000);
   };

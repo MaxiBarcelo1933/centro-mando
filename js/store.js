@@ -2,7 +2,9 @@
 // Todas las escrituras pasan por acá: se guardan en IndexedDB, se actualiza
 // la copia en memoria y se avisa a quien esté escuchando (re-render + badge).
 import * as db from './db.js';
-import { todayISO, dateOf, addDays } from './dates.js';
+import { todayISO, dateOf, addDays, diffDays } from './dates.js';
+import { currentPeriod, periodWorkStart } from './periods.js';
+import { SEED_TEMPLATES } from './seed.js';
 
 export const DEFAULT_AREAS = [
   { id: 'ventas', name: 'Reporte de Ventas', color: '#8FB3FF', bg: 'rgba(91, 141, 239, 0.16)', hidden: false },
@@ -19,6 +21,7 @@ const DEFAULT_SETTINGS = {
   installBannerDismissed: false,
   badgeEnabled: false,
   lastBackupAt: null,
+  seeded: false,
 };
 
 export const BUCKET_LABELS = { hoy: 'Hoy', semana: 'Esta semana', algun_dia: 'Algún día' };
@@ -26,6 +29,8 @@ export const BUCKET_LABELS = { hoy: 'Hoy', semana: 'Esta semana', algun_dia: 'Al
 const state = {
   tasks: [],
   followups: [],
+  templates: [],
+  runs: [],
   settings: { ...DEFAULT_SETTINGS },
 };
 
@@ -45,14 +50,21 @@ function notify() {
 // ---------- Arranque ----------
 
 export async function init() {
-  const [tasks, followups, settingsRows] = await Promise.all([
+  const [tasks, followups, templates, runs, settingsRows] = await Promise.all([
     db.getAll('tasks'),
     db.getAll('followups'),
+    db.getAll('processTemplates'),
+    db.getAll('processRuns'),
     db.getAll('settings'),
   ]);
   state.tasks = tasks;
   state.followups = followups;
+  state.templates = templates;
+  state.runs = runs;
   for (const row of settingsRows) state.settings[row.key] = row.value;
+
+  await seedTemplates();
+  await ensureCurrentRuns();
 
   // Le pedimos al navegador que no borre nuestros datos aunque falte espacio.
   navigator.storage?.persist?.().catch(() => {});
@@ -230,11 +242,157 @@ export function getWaitingSoon(today = todayISO()) {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-// ---------- Procesos (llega en la Fase 3) ----------
+// ---------- Procesos: plantillas y ejecuciones por período ----------
 
-/** Progreso del cierre de mes: { done, total } o null si todavía no hay plantilla. */
-export function getClosingProgress() {
-  return null;
+/** Primer arranque: carga el "Cierre de mes" real (una sola vez, aunque después lo borres). */
+async function seedTemplates() {
+  if (state.settings.seeded) return;
+  if (state.templates.length === 0) {
+    const templates = structuredClone(SEED_TEMPLATES);
+    await db.putMany('processTemplates', templates);
+    state.templates = templates;
+  }
+  await db.put('settings', { key: 'seeded', value: true });
+  state.settings.seeded = true;
+}
+
+/** Crea vacía la ejecución del período actual de cada plantilla, si todavía no existe. */
+export async function ensureCurrentRuns(today = todayISO()) {
+  const missing = [];
+  for (const template of state.templates) {
+    const period = currentPeriod(template, today);
+    if (!getRun(template.id, period)) {
+      missing.push({
+        id: `${template.id}:${period}`,
+        templateId: template.id,
+        period,
+        checked: {},
+        createdAt: new Date().toISOString(),
+        completedAt: null,
+      });
+    }
+  }
+  if (missing.length === 0) return false;
+  await db.putMany('processRuns', missing);
+  state.runs.push(...missing);
+  return true;
+}
+
+/** Al volver a la app o a medianoche: si empezó un mes/semana nuevo, crea su checklist. */
+export async function refreshDay() {
+  if (await ensureCurrentRuns()) notify();
+}
+
+export function getTemplates() {
+  return state.templates;
+}
+
+export function getTemplate(id) {
+  return state.templates.find((t) => t.id === id) ?? null;
+}
+
+export function getRun(templateId, period) {
+  return state.runs.find((r) => r.templateId === templateId && r.period === period) ?? null;
+}
+
+export function getCurrentRun(template, today = todayISO()) {
+  return getRun(template.id, currentPeriod(template, today));
+}
+
+/** Períodos anteriores de una plantilla, del más nuevo al más viejo. */
+export function getPastRuns(template, today = todayISO()) {
+  const current = currentPeriod(template, today);
+  return state.runs
+    .filter((r) => r.templateId === template.id && r.period !== current)
+    .sort((a, b) => b.period.localeCompare(a.period));
+}
+
+const templateStepIds = (template) => template.groups.flatMap((g) => g.steps.map((s) => s.id));
+
+/** Cuántos pasos de la plantilla (tal como está hoy) están marcados en la ejecución. */
+export function runProgress(template, run) {
+  const ids = templateStepIds(template);
+  const done = run ? ids.filter((id) => run.checked[id]).length : 0;
+  return { done, total: ids.length };
+}
+
+/** Días que se tardó en cerrar un período (contando el primer día de trabajo). */
+export function runDuration(template, run) {
+  if (!run?.completedAt) return null;
+  return diffDays(periodWorkStart(template, run.period), dateOf(run.completedAt)) + 1;
+}
+
+// Marca la ejecución como terminada (o no) según los pasos actuales de la plantilla.
+function withCompletion(template, run) {
+  const { done, total } = runProgress(template, run);
+  const complete = total > 0 && done === total;
+  if (complete && !run.completedAt) return { ...run, completedAt: new Date().toISOString() };
+  if (!complete && run.completedAt) return { ...run, completedAt: null };
+  return run;
+}
+
+async function saveRun(run) {
+  await db.put('processRuns', run);
+  const index = state.runs.findIndex((r) => r.id === run.id);
+  if (index >= 0) state.runs[index] = run;
+  else state.runs.push(run);
+}
+
+/** Marca o desmarca un paso. Devuelve { run, justCompleted }. */
+export async function toggleStep(templateId, stepId) {
+  const template = getTemplate(templateId);
+  if (!getCurrentRun(template)) await ensureCurrentRuns();
+  const run = getCurrentRun(template);
+  const checked = { ...run.checked };
+  if (checked[stepId]) delete checked[stepId];
+  else checked[stepId] = new Date().toISOString();
+  const updated = withCompletion(template, { ...run, checked });
+  await saveRun(updated);
+  notify();
+  return { run: updated, justCompleted: !run.completedAt && Boolean(updated.completedAt) };
+}
+
+/** Guarda una plantilla nueva o editada. Lo ya marcado en el período actual se conserva. */
+export async function saveTemplate(template) {
+  const toSave = { ...template, id: template.id ?? newId() };
+  await db.put('processTemplates', toSave);
+  const index = state.templates.findIndex((t) => t.id === toSave.id);
+  if (index >= 0) state.templates[index] = toSave;
+  else state.templates.push(toSave);
+
+  await ensureCurrentRuns();
+  // Si se agregaron o sacaron pasos, puede cambiar si el período está terminado.
+  const run = getCurrentRun(toSave);
+  if (run) {
+    const updated = withCompletion(toSave, run);
+    if (updated !== run) await saveRun(updated);
+  }
+  notify();
+  return toSave;
+}
+
+/** Elimina la plantilla (sus períodos quedan guardados, por si deshacés). */
+export async function deleteTemplate(id) {
+  const template = getTemplate(id);
+  await db.remove('processTemplates', id);
+  state.templates = state.templates.filter((t) => t.id !== id);
+  notify();
+  return template;
+}
+
+export function restoreTemplate(template) {
+  return saveTemplate(template);
+}
+
+export function newStepId() {
+  return newId();
+}
+
+/** Progreso del cierre de mes para el tile de Hoy: { done, total } o null si no hay plantilla mensual. */
+export function getClosingProgress(today = todayISO()) {
+  const template = getTemplate('cierre-de-mes') ?? state.templates.find((t) => t.frequency === 'monthly');
+  if (!template) return null;
+  return runProgress(template, getCurrentRun(template, today));
 }
 
 // ---------- Badge del ícono ----------
