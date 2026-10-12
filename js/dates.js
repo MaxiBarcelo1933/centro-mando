@@ -133,3 +133,16 @@ export function nowMinutes(now = new Date()) {
   const p = zonedParts(now);
   return p.hour * 60 + p.minute;
 }
+
+/** Día hábil: de lunes a viernes y que no sea feriado. */
+export function isBusinessDay(iso, holidays = []) {
+  const weekday = weekdayOf(iso);
+  return weekday !== 0 && weekday !== 6 && !holidays.includes(iso);
+}
+
+/** El próximo día hábil DESPUÉS de `iso`. */
+export function nextBusinessDay(iso, holidays = []) {
+  let day = addDays(iso, 1);
+  while (!isBusinessDay(day, holidays)) day = addDays(day, 1);
+  return day;
+}

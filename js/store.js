@@ -22,6 +22,8 @@ const DEFAULT_SETTINGS = {
   badgeEnabled: false,
   lastBackupAt: null,
   seeded: false,
+  holidays: ['2026-12-25', '2027-01-01'], // feriados (no son días hábiles)
+  workSeed: null, // datos de trabajo importados: { version, importedAt, imported: { seedId: { kind, id } } }
 };
 
 export const BUCKET_LABELS = { hoy: 'Hoy', semana: 'Esta semana', algun_dia: 'Algún día' };
@@ -121,9 +123,11 @@ function normalizeSchedule(bucket, dueDate) {
   return { bucket, dueDate: dueDate || null };
 }
 
-export function addTask({ title, area, bucket = 'hoy', time = null, dueDate = null, notes = '', sample = false }) {
+export function addTask({ title, area, bucket = 'hoy', time = null, dueDate = null, notes = '', sample = false, seedId = null, pdvCodes = null }) {
   return saveTask({
     ...(sample ? { sample: true } : {}),
+    ...(seedId ? { seedId } : {}),
+    ...(pdvCodes?.length ? { pdvCodes } : {}),
     id: newId(),
     title: title.trim(),
     area,
@@ -230,6 +234,11 @@ export function getTask(id) {
   return state.tasks.find((t) => t.id === id) ?? null;
 }
 
+/** ¿Hay una tarea o seguimiento cargado desde los datos de trabajo con este seedId? */
+export function hasSeedItem(seedId) {
+  return state.tasks.some((t) => t.seedId === seedId) || state.followups.some((f) => f.seedId === seedId);
+}
+
 // ---------- Calendario ----------
 
 /**
@@ -287,9 +296,10 @@ export function getFollowup(id) {
   return state.followups.find((f) => f.id === id) ?? null;
 }
 
-export function addFollowup({ title, area, nextAction = '', dueDate, owner = 'me', waitingFor = '', sample = false }) {
+export function addFollowup({ title, area, nextAction = '', dueDate, owner = 'me', waitingFor = '', sample = false, seedId = null }) {
   return saveFollowup({
     ...(sample ? { sample: true } : {}),
+    ...(seedId ? { seedId } : {}),
     id: newId(),
     title: title.trim(),
     area,
@@ -565,6 +575,7 @@ export const AREA_PALETTE = [
   { name: 'Celeste', color: '#7FD8E0', bg: 'rgba(127, 216, 224, 0.16)' },
   { name: 'Coral', color: '#FF9F8A', bg: 'rgba(255, 122, 110, 0.16)' },
   { name: 'Rosa', color: '#F5A3D7', bg: 'rgba(240, 120, 200, 0.16)' },
+  { name: 'Lima', color: '#C5E478', bg: 'rgba(180, 220, 90, 0.16)' },
   { name: 'Gris', color: '#C4C9D2', bg: '#232935' },
 ];
 
@@ -573,8 +584,8 @@ export function updateArea(id, patch) {
   return setSetting('areas', areas);
 }
 
-export function addArea({ name, color, bg }) {
-  const area = { id: `area-${newId().slice(0, 8)}`, name: name.trim(), color, bg, hidden: false };
+export function addArea({ id = null, name, color, bg }) {
+  const area = { id: id ?? `area-${newId().slice(0, 8)}`, name: name.trim(), color, bg, hidden: false };
   return setSetting('areas', [...state.settings.areas, area]).then(() => area);
 }
 
