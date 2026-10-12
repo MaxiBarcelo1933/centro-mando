@@ -1,0 +1,74 @@
+/* Tokens de diseño: todos los colores, medidas y tiempos de la app en un solo lugar. */
+:root {
+  color-scheme: dark;
+
+  /* Superficies */
+  --bg: #0E1116;
+  --surface: #171B22;
+  --surface-2: #1A1F27;
+  --tabbar: #12161C;
+  --line: #222833;
+  --line-strong: #343B48;
+
+  /* Texto */
+  --text: #F2F4F7;
+  --text-muted: #9AA3AF;
+  --text-done: #7D8696;
+  --tab-inactive: #8B94A3;
+
+  /* Acento y estados */
+  --accent: #F5A524;
+  --accent-soft: #3A2C10;
+  --accent-text: #FFD27A;
+  --on-accent: #0E1116;
+  --danger: #FF7A6E;
+  --danger-bg: #221517;
+  --danger-border: #4D2420;
+  --info: #9DBBFF;
+  --badge-bg: #D63B3B;
+  --badge-text: #FFFFFF;
+  --check-border: #3A4250;
+  --note: #D9C29A;
+  --toast-bg: #2A303B;
+
+  /* Colores por área: texto / fondo de etiqueta */
+  --area-ventas: #8FB3FF;
+  --area-ventas-bg: rgba(91, 141, 239, 0.16);
+  --area-meta: #F7BC55;
+  --area-meta-bg: rgba(245, 165, 36, 0.16);
+  --area-pdv: #6FDCA6;
+  --area-pdv-bg: rgba(63, 191, 127, 0.16);
+  --area-carteleria: #CDB0FF;
+  --area-carteleria-bg: rgba(185, 140, 245, 0.16);
+  --area-relevamiento: #7FD8E0;
+  --area-relevamiento-bg: rgba(127, 216, 224, 0.16);
+  --area-otros: #C4C9D2;
+  --area-otros-bg: #232935;
+
+  /* Tipografía */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+
+  /* Formas */
+  --radius-card: 18px;
+  --radius-tile: 16px;
+  --radius-chip: 20px;
+  --radius-btn: 16px;
+  --radius-sheet: 30px;
+
+  /* Espaciado y medidas */
+  --gutter: 20px;
+  --gap: 18px;
+  --tap: 44px;
+  --tabbar-h: 58px;
+  --fab-size: 62px;
+
+  /* Zonas seguras (Dynamic Island, indicador de inicio) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+
+  /* Movimiento */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --dur: 250ms;
+}
