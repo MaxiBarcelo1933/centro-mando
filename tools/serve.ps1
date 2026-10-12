@@ -31,6 +31,14 @@ try {
         $req = $ctx.Request
         $res = $ctx.Response
         try {
+            # Las pruebas automáticas mandan acá su resultado (lo lee tools\test.ps1).
+            if ($req.HttpMethod -eq 'POST' -and $req.Url.AbsolutePath -eq '/tests/report') {
+                $reader = New-Object IO.StreamReader($req.InputStream, [Text.Encoding]::UTF8)
+                [IO.File]::WriteAllText((Join-Path $root 'tests\last-result.txt'), $reader.ReadToEnd(), [Text.Encoding]::UTF8)
+                $res.StatusCode = 204
+                Write-Host '204 resultado de pruebas recibido'
+                continue
+            }
             $rel = [Uri]::UnescapeDataString($req.Url.AbsolutePath).TrimStart('/')
             if ($rel -eq '' -or $rel.EndsWith('/')) { $rel += 'index.html' }
             $full = [IO.Path]::GetFullPath((Join-Path $root $rel))

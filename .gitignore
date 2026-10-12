@@ -9,3 +9,6 @@ desktop.ini
 
 # Backups exportados de la app (tienen datos personales)
 centro-mando-backup-*.json
+
+# Resultado de las pruebas automáticas
+tests/last-result.txt

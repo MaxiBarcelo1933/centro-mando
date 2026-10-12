@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es-UY">
+<head>
+  <meta charset="utf-8">
+  <title>Pruebas · Centro de Mando</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; background: #0E1116; color: #F2F4F7; margin: 16px; }
+    .ok { color: #6FDCA6; } .fail { color: #FF7A6E; }
+    iframe { width: 440px; height: 900px; border: 1px solid #343B48; }
+  </style>
+</head>
+<body>
+  <!--
+    Pruebas automáticas de la app. OJO: usan la misma base de datos que la app,
+    así que correlas solo con el script tools/test.ps1 (usa un perfil temporal de Chrome).
+  -->
+  <h1 id="summary">Corriendo…</h1>
+  <ol id="results"></ol>
+  <iframe id="app" title="App bajo prueba"></iframe>
+
+  <script type="module">
+    import * as dates from '../js/dates.js';
+    import * as store from '../js/store.js';
+    import * as db from '../js/db.js';
+
+    // Manda el resultado al servidor local (tools/serve.ps1 lo guarda para tools/test.ps1).
+    function report(summary) {
+      document.getElementById('summary').textContent = summary;
+      const lines = [...document.querySelectorAll('#results li')].map((li) => li.textContent);
+      fetch('/tests/report', { method: 'POST', body: [...lines, '', `Resultado: ${summary}`].join('\n') }).catch(() => {});
+    }
+    window.addEventListener('error', (e) => report(`ERROR: ${e.message}`));
+    window.addEventListener('unhandledrejection', (e) => report(`ERROR: ${e.reason?.stack || e.reason}`));
+    const results = document.getElementById('results');
+    let failures = 0;
+
+    function check(name, condition, detail = '') {
+      const li = document.createElement('li');
+      li.className = condition ? 'ok' : 'fail';
+      li.textContent = `${condition ? 'OK' : 'FALLA'} — ${name}${!condition && detail ? ` (${detail})` : ''}`;
+      results.append(li);
+      if (!condition) failures++;
+    }
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    async function waitFor(fn, timeout = 3000) {
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        const value = fn();
+        if (value) return value;
+        await sleep(30);
+      }
+      return null;
+    }
+
+    // ---------- Fechas ----------
+    check('addDays cruza fin de mes', dates.addDays('2026-10-31', 1) === '2026-11-01');
+    check('diffDays', dates.diffDays('2026-10-05', '2026-10-12') === 7);
+    check('formatLongDate', dates.formatLongDate('2026-10-12') === 'lunes 12 de octubre', dates.formatLongDate('2026-10-12'));
+    check('relativeDayLabel mañana', dates.relativeDayLabel('2026-10-13', '2026-10-12') === 'Mañana');
+    check('relativeDayLabel esta semana', dates.relativeDayLabel('2026-10-14', '2026-10-12') === 'Mié 14');
+    check('relativeDayLabel lejos', dates.relativeDayLabel('2026-10-30', '2026-10-12') === '30 oct');
+    check('overdueSince ayer', dates.overdueSinceLabel('2026-10-11', '2026-10-12') === 'desde ayer');
+    check('overdueSince lunes', dates.overdueSinceLabel('2026-10-05', '2026-10-12') === 'desde el lun 5');
+    check('nextMonday desde lunes', dates.nextMonday('2026-10-12') === '2026-10-19');
+    check('nextMonday desde miércoles', dates.nextMonday('2026-10-14') === '2026-10-19');
+    // 02:30 UTC del 13 = 23:30 del 12 en Montevideo
+    check('todayISO usa hora de Montevideo', dates.todayISO(new Date('2026-10-13T02:30:00Z')) === '2026-10-12');
+    const ms = dates.msUntilNextMidnight(new Date('2026-10-13T02:30:00Z'));
+    check('msUntilNextMidnight', ms === 30 * 60 * 1000, String(ms));
+
+    // ---------- Datos previos: una atrasada, una hecha ayer, una con fecha futura ----------
+    const today = dates.todayISO();
+    await store.init();
+    const late = await store.addTask({ title: 'Tarea atrasada', area: 'pdv', bucket: 'hoy' });
+    await store.updateTask(late.id, { dueDate: dates.addDays(today, -1) });
+    const old = await store.addTask({ title: 'Hecha ayer', area: 'otros', bucket: 'hoy' });
+    await store.updateTask(old.id, { done: true, doneAt: new Date(Date.now() - 86400000 * 2).toISOString() });
+    await store.addTask({ title: 'Futura', area: 'meta', bucket: 'semana', dueDate: dates.addDays(today, 2) });
+    await store.addTask({ title: 'Con hora', area: 'ventas', bucket: 'hoy', time: '09:30' });
+
+    // ---------- La app ----------
+    const frame = document.getElementById('app');
+    frame.src = '../index.html#hoy';
+    await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    const win = frame.contentWindow;
+    const doc = win.document;
+    const $ = (sel) => doc.querySelector(sel);
+    const $$ = (sel) => [...doc.querySelectorAll(sel)];
+    const titles = () => $$('.task-row__title').map((n) => n.textContent);
+
+    await waitFor(() => $('.tiles'));
+    check('Hoy se dibuja', Boolean($('.tiles')));
+    check('Encabezado con fecha', $('.overline')?.textContent === dates.formatLongDate(today));
+    check('Atrasada arriba de todo', titles()[0] === 'Tarea atrasada', titles().join(' | '));
+    check('Etiqueta "Atrasada · desde ayer"', $$('.tag--danger').some((n) => n.textContent === 'Atrasada · desde ayer'));
+    check('Hecha otro día no aparece', !titles().includes('Hecha ayer'));
+    check('Futura va en "Esta semana"', $$('.fold .task-row__title').some((n) => n.textContent === 'Futura'));
+    check('Tile pendientes = 2', $('.tile__value')?.textContent === '2', $('.tile__value')?.textContent);
+
+    // Captura rápida
+    $('#fab').click();
+    const input = await waitFor(() => doc.querySelector('.sheet input[type="text"]'));
+    check('El + abre el sheet', Boolean(input));
+    check('El input tiene el foco', doc.activeElement === input);
+    const save = doc.querySelector('.sheet .btn-primary');
+    check('Guardar deshabilitado sin texto', save.disabled);
+    input.value = 'Llamar a la gomería de Las Piedras';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    check('Guardar se habilita con texto', !save.disabled);
+    [...doc.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'PDV').click();
+    input.form.requestSubmit(); // equivale a tocar Enter
+    await waitFor(() => titles().includes('Llamar a la gomería de Las Piedras'));
+    check('La tarea nueva aparece en Hoy', titles().includes('Llamar a la gomería de Las Piedras'));
+    check('Toast "Guardada en Hoy"', $('.toast')?.textContent.includes('Guardada en Hoy'));
+    await waitFor(() => !doc.querySelector('.sheet-backdrop'), 1000);
+    check('El sheet se cierra', !doc.querySelector('.sheet-backdrop'));
+    await sleep(100);
+    check('Se recuerda la última área', (await db.get('settings', 'lastArea'))?.value === 'pdv');
+
+    // Completar y deshacer
+    const rowOf = (title) => $$('.task-row').find((r) => r.querySelector('.task-row__title').textContent === title);
+    rowOf('Con hora').querySelector('.check').click();
+    await waitFor(() => rowOf('Con hora')?.classList.contains('is-done'));
+    check('Completar tacha la tarea', rowOf('Con hora')?.classList.contains('is-done'));
+    const todayList = [...doc.querySelector('.list').querySelectorAll('.task-row__title')].map((n) => n.textContent);
+    check('Completada baja al final', todayList.at(-1) === 'Con hora', todayList.join(' | '));
+    check('"1 hecha"', $('.section-aside')?.textContent === '1 hecha');
+    [...doc.querySelectorAll('.toast__action')].at(-1).click();
+    await waitFor(() => !rowOf('Con hora')?.classList.contains('is-done'));
+    check('Deshacer la desmarca', !rowOf('Con hora')?.classList.contains('is-done'));
+
+    // Editar: pasar a "Esta semana" y volver con "Pasar a hoy"
+    rowOf('Llamar a la gomería de Las Piedras').querySelector('.task-row__main').click();
+    await waitFor(() => doc.querySelector('.sheet'));
+    [...doc.querySelectorAll('.sheet .chip')].find((c) => c.textContent === 'Esta semana').click();
+    check('Esta semana borra la fecha de hoy', doc.querySelector('.sheet input[type="date"]').value === '');
+    doc.querySelector('.sheet form').requestSubmit();
+    await waitFor(() => $$('.fold .task-row__title').some((n) => n.textContent === 'Llamar a la gomería de Las Piedras'));
+    check('Editada a "Esta semana"', $$('.fold .task-row__title').some((n) => n.textContent === 'Llamar a la gomería de Las Piedras'));
+    await waitFor(() => !doc.querySelector('.sheet-backdrop'), 1000);
+    const weekRow = $$('.fold .task-row').find((r) => r.textContent.includes('Llamar a la gomería'));
+    weekRow.querySelector('.row-action').click();
+    await waitFor(() => !$$('.fold .task-row__title').some((n) => n.textContent.includes('Llamar a la gomería')));
+    check('"Pasar a hoy" la devuelve a Hoy', !$$('.fold .task-row__title').some((n) => n.textContent.includes('Llamar a la gomería')));
+
+    // Eliminar con confirmación y deshacer
+    rowOf('Tarea atrasada').querySelector('.task-row__main').click();
+    await waitFor(() => doc.querySelector('.sheet .btn-danger'));
+    const del = doc.querySelector('.sheet .btn-danger');
+    del.click();
+    check('Eliminar pide confirmación', del.textContent === 'Tocá de nuevo para eliminar');
+    del.click();
+    await waitFor(() => !rowOf('Tarea atrasada'));
+    check('Eliminar la saca', !rowOf('Tarea atrasada'));
+    [...doc.querySelectorAll('.toast__action')].at(-1).click();
+    await waitFor(() => rowOf('Tarea atrasada'));
+    check('Deshacer la restaura', Boolean(rowOf('Tarea atrasada')));
+
+    // Persistencia: recargar y ver que sigue todo
+    frame.contentWindow.location.reload();
+    await new Promise((r) => frame.addEventListener('load', r, { once: true }));
+    await waitFor(() => frame.contentWindow.document.querySelector('.tiles'));
+    const after = [...frame.contentWindow.document.querySelectorAll('.task-row__title')].map((n) => n.textContent);
+    check('Los datos sobreviven a recargar', after.includes('Llamar a la gomería de Las Piedras') && after.includes('Tarea atrasada'), after.join(' | '));
+
+    // Navegación
+    frame.contentWindow.location.hash = 'procesos';
+    await waitFor(() => frame.contentWindow.document.querySelector('.title')?.textContent === 'Procesos');
+    check('Navega a Procesos', frame.contentWindow.document.querySelector('.title')?.textContent === 'Procesos');
+
+    report(failures === 0 ? 'TODO OK' : `${failures} FALLAS`);
+  </script>
+</body>
+</html>
