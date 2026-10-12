@@ -1,26 +1,112 @@
 // Utilidades de fechas. Todo se calcula en la hora de Montevideo,
 // sin importar la zona horaria configurada en el dispositivo.
+// Las fechas "de calendario" se manejan como texto "YYYY-MM-DD".
 
 export const TIME_ZONE = 'America/Montevideo';
-export const LOCALE = 'es-UY';
 
-// Devuelve las partes de una fecha (año, mes, día, día de la semana…) en Montevideo.
-function partsOf(date, options) {
-  const parts = new Intl.DateTimeFormat(LOCALE, { timeZone: TIME_ZONE, ...options }).formatToParts(date);
-  return Object.fromEntries(parts.map((p) => [p.type, p.value]));
+// Nombres propios (en vez de Intl) para que salgan siempre iguales en todos los navegadores.
+export const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+  'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+export const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+export const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+export const WEEKDAYS_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+
+const DAY_MS = 86400000;
+const pad = (n) => String(n).padStart(2, '0');
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+// Año, mes, día, hora… de un instante, vistos desde Montevideo.
+function zonedParts(date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  return {
+    year: get('year'), month: get('month'), day: get('day'),
+    hour: get('hour'), minute: get('minute'), second: get('second'),
+  };
+}
+
+// "YYYY-MM-DD" ↔ Date a medianoche UTC (solo para hacer cuentas de días).
+function toUTC(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+const fromUTC = (date) => date.toISOString().slice(0, 10);
+
+/** Fecha de calendario (en Montevideo) de un instante: Date o texto ISO. */
+export function dateOf(value) {
+  const p = zonedParts(value instanceof Date ? value : new Date(value));
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 }
 
 /** Fecha de hoy en Montevideo como "YYYY-MM-DD". */
 export function todayISO(now = new Date()) {
-  const p = new Intl.DateTimeFormat('en-US', {
-    timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(now);
-  const get = (type) => p.find((x) => x.type === type).value;
-  return `${get('year')}-${get('month')}-${get('day')}`;
+  return dateOf(now);
 }
 
-/** "lunes 12 de octubre" (el sobretítulo lo pasa a mayúsculas con CSS). */
-export function formatLongDate(now = new Date()) {
-  const p = partsOf(now, { weekday: 'long', day: 'numeric', month: 'long' });
-  return `${p.weekday} ${p.day} de ${p.month}`;
+export function addDays(iso, days) {
+  const d = toUTC(iso);
+  d.setUTCDate(d.getUTCDate() + days);
+  return fromUTC(d);
+}
+
+/** Días desde `from` hasta `to` (positivo si `to` es posterior). */
+export function diffDays(from, to) {
+  return Math.round((toUTC(to) - toUTC(from)) / DAY_MS);
+}
+
+/** 0 = domingo … 6 = sábado. */
+export function weekdayOf(iso) {
+  return toUTC(iso).getUTCDay();
+}
+
+/** El próximo lunes (si hoy es lunes, el de la semana que viene). */
+export function nextMonday(iso) {
+  const delta = (8 - weekdayOf(iso)) % 7 || 7;
+  return addDays(iso, delta);
+}
+
+/** "lunes 12 de octubre" */
+export function formatLongDate(iso = todayISO()) {
+  const d = toUTC(iso);
+  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} de ${MONTHS[d.getUTCMonth()]}`;
+}
+
+/** "9 oct" */
+export function formatShortDate(iso) {
+  const d = toUTC(iso);
+  return `${d.getUTCDate()} ${MONTHS_SHORT[d.getUTCMonth()]}`;
+}
+
+/** "mié 14" */
+export function formatWeekdayDay(iso) {
+  const d = toUTC(iso);
+  return `${WEEKDAYS_SHORT[d.getUTCDay()]} ${d.getUTCDate()}`;
+}
+
+/** "Hoy", "Mañana", "Ayer", "Mié 14" (esta semana) o "21 oct". */
+export function relativeDayLabel(iso, today = todayISO()) {
+  const diff = diffDays(today, iso);
+  if (diff === 0) return 'Hoy';
+  if (diff === 1) return 'Mañana';
+  if (diff === -1) return 'Ayer';
+  if (diff > 1 && diff < 7) return capitalize(formatWeekdayDay(iso));
+  return formatShortDate(iso);
+}
+
+/** Para tareas atrasadas: "desde ayer", "desde el lun 5", "desde el 28 sep". */
+export function overdueSinceLabel(iso, today = todayISO()) {
+  const diff = diffDays(iso, today);
+  if (diff <= 1) return 'desde ayer';
+  if (diff <= 7) return `desde el ${formatWeekdayDay(iso)}`;
+  return `desde el ${formatShortDate(iso)}`;
+}
+
+/** Milisegundos que faltan para la próxima medianoche de Montevideo. */
+export function msUntilNextMidnight(now = new Date()) {
+  const p = zonedParts(now);
+  return ((24 - p.hour) * 3600 - p.minute * 60 - p.second) * 1000 - now.getMilliseconds();
 }
